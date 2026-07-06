@@ -1,0 +1,51 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: tamika_db
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - tamika_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tamika_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "5000:5000"
+    depends_on:
+      - db
+    networks:
+      - tamika_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: tamika_frontend
+    restart: unless-stopped
+    environment:
+      API_INTERNAL_URL: http://backend:5000
+    ports:
+      - "8083:3000"
+    depends_on:
+      - backend
+    networks:
+      - tamika_network
+
+volumes:
+  pgdata:
+    name: tamika_pgdata
+
+networks:
+  tamika_network:
+    driver: bridge

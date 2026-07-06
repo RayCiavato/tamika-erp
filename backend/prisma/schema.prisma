@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Cliente {
+  id                    String                @id @default(uuid())
+  nombre                String
+  alias                 String?
+  rif                   String                @unique
+  direccion             String?
+  creadoEn              DateTime              @default(now())
+  ventas                Venta[]
+  cotizaciones          Cotizacion[]
+  movimientosContables  MovimientoContable[]
+}
+
+model Venta {
+  id          String   @id @default(uuid())
+  clienteId   String
+  cliente     Cliente  @relation(fields: [clienteId], references: [id])
+  linea       String
+  base        Float
+  iva         Float
+  total       Float
+  estado      String   @default("Por cobrar")
+  fecha       DateTime @default(now())
+}
+
+model Cotizacion {
+  id          String   @id @default(uuid())
+  numero      String   @unique
+  clienteId   String
+  cliente     Cliente  @relation(fields: [clienteId], references: [id])
+  fecha       DateTime @default(now())
+  vigencia    String
+  condiciones String
+  subtotal    Float
+  iva         Float
+  total       Float
+  items       Json
+  titulo      String?
+}
+
+model Tasa {
+  id        String   @id @default(uuid())
+  bcv       Float
+  paralelo  Float
+  fecha     DateTime @default(now())
+}
+
+enum MovimientoTipo {
+  INGRESO
+  EGRESO
+  CUENTA_POR_COBRAR
+  CUENTA_POR_PAGAR
+}
+
+enum MovimientoEstado {
+  PENDIENTE
+  PAGADO
+  VENCIDO
+  ANULADO
+}
+
+model MovimientoContable {
+  id               String            @id @default(uuid())
+  tipo             MovimientoTipo
+  concepto         String
+  descripcion      String?
+  montoUsd         Float
+  tasaBcv          Float?
+  montoBs          Float?
+  fechaMovimiento  DateTime
+  fechaVencimiento DateTime?
+  estado           MovimientoEstado  @default(PENDIENTE)
+  clienteId        String?
+  cliente          Cliente?          @relation(fields: [clienteId], references: [id])
+  proveedorId      String?
+  referencia       String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+}

@@ -8,9 +8,16 @@ const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
 import 'react-quill-new/dist/quill.snow.css';
 
 const DEFAULT_TERMS = `<p>Los servicios se rigen por los lineamientos de ISO/IEC 27001, NIST CSF.</p><br/><p><strong>Precios:</strong> Los precios estÃ¡n expresados en USD (DÃ³lares) e incluyen el Impuesto al Valor Agregado (IVA), salvo que se indique lo contrario.</p><p><strong>Validez:</strong> Los precios son vÃ¡lidos Ãºnicamente para este cliente y negociaciÃ³n en particular.</p><p><strong>Financiamiento:</strong> OpciÃ³n de pago en 3 cuotas mensuales (50% inicial y 2 cuotas de 25%) en bolÃ­vares, calculadas al tipo de cambio oficial del Banco Central de Venezuela (BCV) vigente en la fecha de cada pago.</p><p><strong>Variaciones de Precio:</strong> El precio de todos los productos que componen esta propuesta estÃ¡ sujeto a variaciÃ³n sin previo aviso, segÃºn las condiciones actuales del mercado.</p><p><strong>AprobaciÃ³n:</strong> La aprobaciÃ³n debe ser enviada vÃ­a correo electrÃ³nico.</p><p><strong>Validez de la Oferta:</strong> Esta oferta tiene una validez de 07 dÃ­as hÃ¡biles.</p><p><strong>Confidencialidad:</strong> La informaciÃ³n relacionada con esta propuesta es absolutamente confidencial y para uso exclusivo de la empresa a quien va dirigida, quien se compromete a mantener y respetar la confidencialidad de la informaciÃ³n.</p><p><strong>Recursos Humanos:</strong> La empresa que recibe la cotizaciÃ³n se compromete a no efectuar ofrecimiento alguno de tipo laboral al personal asignado al servicio solicitado durante el desarrollo de este, y hasta por tres (3) aÃ±os contados a partir de la fecha de culminaciÃ³n.</p><p><strong>Costo de Infraestructura:</strong> El costo de infraestructura necesario para la implementaciÃ³n y funcionamiento del sistema correrÃ¡ por cuenta del cliente.</p><p><strong>GarantÃ­a de Servicio:</strong> Cualquier garantÃ­a de servicio se especificarÃ¡ en un acuerdo por separado y estarÃ¡ sujeta a los tÃ©rminos y condiciones acordados.</p><p><strong>Soporte TÃ©cnico:</strong> El soporte tÃ©cnico serÃ¡ proporcionado segÃºn los tÃ©rminos especificados en la propuesta y no incluye soporte adicional fuera del alcance definido sin un costo adicional.</p><p><strong>Modificaciones:</strong> Cualquier modificaciÃ³n a los tÃ©rminos de esta propuesta deberÃ¡ ser acordada por ambas partes y documentada formalmente.</p><p><strong>Inicio de Labores:</strong> No se iniciarÃ¡ labores de ningÃºn tipo sin la respectiva Orden de Servicio y/o anticipo de EL CLIENTE.</p><p><strong>Impacto de Disposiciones Gubernamentales:</strong> Cualesquiera disposiciones de Ã­ndole gubernamental cuyo impacto incida de manera directa en el estipendio de Servicios TAMIKA 0302, C.A. serÃ¡ considerado motivo para evaluar, conjuntamente, reajustes en las tarifas o cambios en los tÃ©rminos comerciales.</p><p><strong>Servicios Incluidos:</strong> Esta Oferta no incluye otros servicios o especialidades distintas a las expresamente seÃ±aladas.</p>`;
+const DEFAULT_VIGENCIA = '15 dias habiles';
 
 const parseVe = (str) => { if (!str && str !== 0) return 0; if (typeof str === 'number') return str; return parseFloat(str.toString().replace(/\./g, '').replace(',', '.')) || 0; };
 const formatUsd = (val) => currency(val, { symbol: '$', separator: '.', decimal: ',' }).format();
+const DOCUMENTO_OPTIONS = [
+  { value: 'PROPUESTA', label: 'Propuesta' },
+  { value: 'PRESUPUESTO', label: 'Presupuesto' },
+];
+const ESTADO_DOCUMENTO_OPTIONS = ['BORRADOR', 'APROBADO', 'CONVERTIDO', 'FACTURADO', 'ANULADO'];
+const documentoLabel = (tipoDocumento) => (tipoDocumento === 'PRESUPUESTO' ? 'Presupuesto' : 'Propuesta');
 
 const getBase64ImageFromURL = (url) => {
   return new Promise((resolve) => {
@@ -43,8 +50,10 @@ export default function TamikaERP() {
   const [cotiEditandoId, setCotiEditandoId] = useState(null);
   const [clienteSelect, setClienteSelect] = useState('');
   const [nroCoti, setNroCoti] = useState('');
+  const [tipoDocumento, setTipoDocumento] = useState('PROPUESTA');
+  const [estadoDocumento, setEstadoDocumento] = useState('BORRADOR');
   const [tituloCoti, setTituloCoti] = useState('');
-  const [vigencia, setVigencia] = useState('15 dÃ­as hÃ¡biles');
+  const [vigencia, setVigencia] = useState(DEFAULT_VIGENCIA);
   const [condiciones, setCondiciones] = useState(DEFAULT_TERMS);
 
   const [advMode, setAdvMode] = useState(true);
@@ -61,10 +70,24 @@ export default function TamikaERP() {
   const [editandoId, setEditandoId] = useState(null);
 
   useEffect(() => { setIsMounted(true); cargarDatos(); }, []);
+  useEffect(() => {
+    if (!cotiEditandoId) cargarSiguienteCorrelativo(tipoDocumento);
+  }, [tipoDocumento, cotiEditandoId]);
+
+  const cargarSiguienteCorrelativo = async (tipo = tipoDocumento) => {
+    try {
+      const res = await fetch(`/api/propuestas/siguiente-correlativo?tipoDocumento=${tipo}`);
+      const data = await res.json();
+      if (res.ok && data.numero) setNroCoti(data.numero);
+    } catch (error) {
+      setNroCoti('');
+    }
+  };
 
   const cargarDatos = () => {
     fetch('/api/clientes').then(res => res.json()).then(data => setClientes(Array.isArray(data) ? data : []));
-    fetch('/api/cotizaciones').then(res => res.json()).then(data => setHistorialCoti(Array.isArray(data) ? data : []));
+    fetch('/api/propuestas').then(res => res.json()).then(data => setHistorialCoti(Array.isArray(data) ? data : []));
+    if (!cotiEditandoId) cargarSiguienteCorrelativo(tipoDocumento);
     fetch('/api/tasas').then(res => res.json()).then(data => {
       if (data && data.bcv > 0) { setTasaBCV(data.bcv.toString().replace('.', ',')); setTasaParalelo(data.paralelo.toString().replace('.', ',')); setDefRel((data.bcv / data.paralelo).toFixed(4).replace('.', ',')); }
     });
@@ -110,7 +133,18 @@ export default function TamikaERP() {
     }));
   };
 
-  const limpiarFormulario = () => { setCotiEditandoId(null); setNroCoti(''); setTituloCoti(''); setClienteSelect(''); setCondiciones(DEFAULT_TERMS); setItemsCoti([]); };
+  const limpiarFormulario = () => {
+    setCotiEditandoId(null);
+    setTipoDocumento('PROPUESTA');
+    setEstadoDocumento('BORRADOR');
+    setNroCoti('');
+    setTituloCoti('');
+    setClienteSelect('');
+    setVigencia(DEFAULT_VIGENCIA);
+    setCondiciones(DEFAULT_TERMS);
+    setItemsCoti([]);
+    cargarSiguienteCorrelativo('PROPUESTA');
+  };
   const agregarItemCoti = () => setItemsCoti([...itemsCoti, { id: Date.now(), desc: '', cant: '1', costo: '0', gan: defGan, ret: defRet, com: defCom, rel: defRel, unitarioManual: '0' }]);
   const actualizarItem = (id, campo, valor) => setItemsCoti(itemsCoti.map(item => item.id === id ? { ...item, [campo]: valor } : item));
   const eliminarItem = (id) => setItemsCoti(itemsCoti.filter(item => item.id !== id));
@@ -120,15 +154,38 @@ export default function TamikaERP() {
   const calcularTotal = () => calcularSubtotal() + calcularIva();
 
   const guardarCotizacionBD = async () => {
-    if(!clienteSelect || !nroCoti) return alert("Selecciona cliente y nro propuesta.");
-    const payload = { numero: nroCoti, clienteId: clienteSelect, titulo: tituloCoti, vigencia, condiciones, subtotal: calcularSubtotal(), iva: calcularIva(), total: calcularTotal(), items: itemsCoti };
-    const res = await fetch(cotiEditandoId ? `/api/cotizaciones/${cotiEditandoId}` : '/api/cotizaciones', { method: cotiEditandoId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (!res.ok) return alert("Error o Correlativo Duplicado");
-    alert(cotiEditandoId ? "Actualizada exitosamente." : "Â¡Guardada exitosamente!"); cargarDatos();
+    if(!clienteSelect) return alert("Selecciona un cliente.");
+    const payload = { tipoDocumento, estado: estadoDocumento, clienteId: clienteSelect, titulo: tituloCoti, vigencia, condiciones, subtotal: calcularSubtotal(), iva: calcularIva(), total: calcularTotal(), items: itemsCoti };
+    const res = await fetch(cotiEditandoId ? `/api/propuestas/${cotiEditandoId}` : '/api/propuestas', { method: cotiEditandoId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) return alert(data?.details?.join('\n') || data?.error || "No se pudo guardar el documento.");
+    setCotiEditandoId(data.id);
+    setNroCoti(data.numero || nroCoti);
+    setTipoDocumento(data.tipoDocumento || tipoDocumento);
+    setEstadoDocumento(data.estado || estadoDocumento);
+    alert(cotiEditandoId ? "Actualizada exitosamente." : "Guardada exitosamente.");
+    cargarDatos();
   };
 
   const cargarDesdeModal = (coti) => {
-    setCotiEditandoId(coti.id); setNroCoti(coti.numero); setTituloCoti(coti.titulo || ''); setClienteSelect(coti.clienteId); setCondiciones(coti.condiciones); setItemsCoti(coti.items); setShowModal(false);
+    setCotiEditandoId(coti.id);
+    setTipoDocumento(coti.tipoDocumento || 'PROPUESTA');
+    setEstadoDocumento(coti.estado || 'BORRADOR');
+    setNroCoti(coti.numero);
+    setTituloCoti(coti.titulo || '');
+    setClienteSelect(coti.clienteId);
+    setVigencia(coti.vigencia || DEFAULT_VIGENCIA);
+    setCondiciones(coti.condiciones || DEFAULT_TERMS);
+    setItemsCoti(Array.isArray(coti.items) ? coti.items : []);
+    setShowModal(false);
+  };
+
+  const eliminarPropuesta = async (coti) => {
+    if (!confirm(`Eliminar ${documentoLabel(coti.tipoDocumento)} ${coti.numero}?`)) return;
+    const res = await fetch(`/api/propuestas/${coti.id}`, { method: 'DELETE' });
+    if (!res.ok) return alert("No se pudo eliminar el documento.");
+    if (cotiEditandoId === coti.id) limpiarFormulario();
+    cargarDatos();
   };
 
   const guardarCliente = async (e) => {
@@ -155,9 +212,10 @@ export default function TamikaERP() {
 
       const c = clientes.find(x => x.id === clienteSelect);
       const d = new Date();
+      const nombreDocumento = documentoLabel(tipoDocumento);
       const dateStr = ('0'+d.getDate()).slice(-2) + ('0'+(d.getMonth()+1)).slice(-2) + d.getFullYear();
       const aliasStr = c?.alias ? `_${c.alias}` : '';
-      const cleanTitle = `Presupuesto_Nro_${nroCoti}${aliasStr}_${dateStr}.pdf`.replace(/\s+/g, '_');
+      const cleanTitle = `${nombreDocumento}_${nroCoti || 'sin_correlativo'}${aliasStr}_${dateStr}.pdf`.replace(/\s+/g, '_');
 
       const tableBody = [
         [
@@ -216,9 +274,9 @@ export default function TamikaERP() {
                 width: 150,
                 alignment: 'right',
                 stack: [
-                  { text: 'PROPUESTA', fontSize: 20, bold: true, color: '#94a3b8', characterSpacing: 2 },
+                  { text: nombreDocumento.toUpperCase(), fontSize: 20, bold: true, color: '#94a3b8', characterSpacing: 2 },
                   { text: `Fecha: ${d.toLocaleDateString('es-VE')}`, fontSize: 10, color: '#0f172a', margin: [0, 5, 0, 0] },
-                  { text: `Nro. ${nroCoti}`, fontSize: 11, bold: true, color: '#0f172a' },
+                  { text: `Nro. ${nroCoti || 'Pendiente'}`, fontSize: 11, bold: true, color: '#0f172a' },
                   { text: `(Pag ${currentPage}/${pageCount})`, fontSize: 9, bold: true, color: '#94a3b8', margin: [0, 2, 0, 0] }
                 ]
               }
@@ -348,7 +406,7 @@ export default function TamikaERP() {
         <nav className="flex flex-col gap-2">
           {[
             { id: 'dashboard', label: 'Dashboard' },
-            { id: 'cotizacion', label: 'Cotizaciones' },
+            { id: 'cotizacion', label: 'Propuestas' },
             { id: 'contabilidad', label: 'Contabilidad' },
             { id: 'catalogos', label: 'Catalogos' },
           ].map((view) => (
@@ -395,32 +453,52 @@ export default function TamikaERP() {
           </section>
         )}
 
-        {/* COTIZACIONES */}
+        {/* PROPUESTAS */}
         {activeView === 'cotizacion' && (
            <section className="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 space-y-6">
-             <div className="flex justify-between items-center border-b pb-4">
-               <button onClick={() => setShowModal(true)} className="px-5 py-2 bg-indigo-100 text-indigo-800 rounded-lg font-bold shadow hover:bg-indigo-200">ðŸ” Buscar Propuestas</button>
-               <div className="flex gap-2">
-                 <button onClick={limpiarFormulario} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold border border-slate-300">ðŸ“ Limpiar / Nueva</button>
-                 <button onClick={guardarCotizacionBD} className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium shadow">{cotiEditandoId ? 'ðŸ’¾ Actualizar BD' : 'ðŸ’¾ Guardar en BD'}</button>
-                 <button onClick={() => generarPDFNativo('abrir')} className="px-5 py-2 bg-slate-800 text-white rounded-lg text-sm font-bold shadow hover:bg-slate-700">ðŸ‘€ VISTA PREVIA</button>
-                 <button onClick={() => generarPDFNativo('descargar')} className="px-6 py-2 bg-emerald-600 text-white rounded-lg text-sm font-extrabold shadow tracking-wide hover:bg-emerald-500">ðŸ“¥ DESCARGAR PDF</button>
+             <div className="flex flex-col gap-3 border-b pb-4 lg:flex-row lg:items-center lg:justify-between">
+               <h2 className="text-xl font-bold text-slate-900">Propuestas y presupuestos</h2>
+               <div className="flex flex-wrap gap-2">
+                 <button onClick={() => setShowModal(true)} className="px-5 py-2 bg-indigo-100 text-indigo-800 rounded-lg font-bold shadow hover:bg-indigo-200">Buscar</button>
+                 <button onClick={limpiarFormulario} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold border border-slate-300">Nuevo</button>
+                 <button onClick={guardarCotizacionBD} className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium shadow">{cotiEditandoId ? 'Actualizar' : 'Guardar'}</button>
+                 <button onClick={() => generarPDFNativo('abrir')} className="px-5 py-2 bg-slate-800 text-white rounded-lg text-sm font-bold shadow hover:bg-slate-700">Vista previa</button>
+                 <button onClick={() => generarPDFNativo('descargar')} className="px-6 py-2 bg-emerald-600 text-white rounded-lg text-sm font-extrabold shadow tracking-wide hover:bg-emerald-500">Descargar PDF</button>
                </div>
              </div>
 
-             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="col-span-2">
+             <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                <div className="md:col-span-2">
                   <label className="text-xs text-slate-500 font-bold uppercase">Cliente</label>
                   <select value={clienteSelect} onChange={(e) => setClienteSelect(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
                     <option value="">-- Selecciona un Cliente --</option>
                     {clientes.map(cli => ( <option key={cli.id} value={cli.id}>{cli.nombre} ({cli.alias})</option> ))}
                   </select>
                 </div>
-                <div className="col-span-2">
-                  <label className="text-xs text-slate-500 font-bold uppercase">TÃ­tulo del Presupuesto (Opcional)</label>
+                <div className="md:col-span-2">
+                  <label className="text-xs text-slate-500 font-bold uppercase">Titulo del documento</label>
                   <input type="text" value={tituloCoti} onChange={(e)=>setTituloCoti(e.target.value)} placeholder="Ej: Presupuesto de Suministros..." className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
                 </div>
-                <div><label className="text-xs text-slate-500 font-bold uppercase">Nro. Propuesta</label><input type="text" value={nroCoti} onChange={(e)=>setNroCoti(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
+                <div>
+                  <label className="text-xs text-slate-500 font-bold uppercase">Tipo</label>
+                  <select value={tipoDocumento} onChange={(e)=>setTipoDocumento(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
+                    {DOCUMENTO_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 font-bold uppercase">Estado</label>
+                  <select value={estadoDocumento} onChange={(e)=>setEstadoDocumento(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
+                    {ESTADO_DOCUMENTO_OPTIONS.map(estado => <option key={estado} value={estado}>{estado}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 font-bold uppercase">Correlativo</label>
+                  <input type="text" value={nroCoti || 'Generando...'} readOnly className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none bg-slate-100 text-slate-700 font-mono font-bold" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 font-bold uppercase">Vigencia</label>
+                  <input type="text" value={vigencia} onChange={(e)=>setVigencia(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
+                </div>
              </div>
 
              <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
@@ -490,16 +568,40 @@ export default function TamikaERP() {
       {/* MODAL BUSQUEDA */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900 bg-opacity-70 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-2xl w-1/2 max-h-[80vh] shadow-2xl flex flex-col">
-            <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-xl">Historial</h3><button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-red-500">âœ–</button></div>
+          <div className="bg-white p-6 rounded-2xl w-[min(1100px,92vw)] max-h-[80vh] shadow-2xl flex flex-col">
+            <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-xl">Historial</h3><button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-red-500">Cerrar</button></div>
             <input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full border p-3 rounded-lg mb-4 outline-none focus:border-indigo-500" />
-            <div className="overflow-y-auto flex-1">
-              {historialCoti.filter(c => c.numero.toLowerCase().includes(searchTerm.toLowerCase()) || c.cliente?.nombre.toLowerCase().includes(searchTerm.toLowerCase())).map(c => (
-                <div key={c.id} className="flex justify-between items-center border-b p-3 hover:bg-slate-50">
-                  <div><p className="font-bold">Nro. {c.numero}</p><p className="text-sm text-slate-600">{c.cliente?.nombre}</p></div>
-                  <button onClick={() => { cargarDesdeModal(c); setShowModal(false); }} className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-sm font-bold">Cargar</button>
-                </div>
-              ))}
+            <div className="overflow-y-auto flex-1 border rounded-xl">
+              <table className="w-full text-left text-sm">
+                <thead className="sticky top-0 bg-slate-100 text-slate-600">
+                  <tr>
+                    <th className="p-3">Correlativo</th>
+                    <th className="p-3">Tipo</th>
+                    <th className="p-3">Cliente</th>
+                    <th className="p-3">Estado</th>
+                    <th className="p-3 text-right">Total</th>
+                    <th className="p-3 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historialCoti.filter(c => {
+                    const term = searchTerm.toLowerCase();
+                    return (c.numero || '').toLowerCase().includes(term) || (c.cliente?.nombre || '').toLowerCase().includes(term) || documentoLabel(c.tipoDocumento).toLowerCase().includes(term);
+                  }).map(c => (
+                    <tr key={c.id} className="border-t hover:bg-slate-50">
+                      <td className="p-3 font-mono font-bold text-slate-800">{c.numero}</td>
+                      <td className="p-3"><span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">{documentoLabel(c.tipoDocumento)}</span></td>
+                      <td className="p-3 text-slate-700">{c.cliente?.nombre || '-'}</td>
+                      <td className="p-3"><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">{c.estado || 'BORRADOR'}</span></td>
+                      <td className="p-3 text-right font-bold">{formatUsd(c.total || 0)}</td>
+                      <td className="p-3 text-right">
+                        <button onClick={() => cargarDesdeModal(c)} className="px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold mr-2">Cargar</button>
+                        <button onClick={() => eliminarPropuesta(c)} className="px-3 py-2 bg-red-50 text-red-700 rounded-lg text-xs font-bold">Eliminar</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

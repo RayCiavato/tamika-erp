@@ -40,7 +40,7 @@ export default function DashboardView({ resumen, loading }) {
         <KpiCard title="Clientes" value={kpis.totalClientes || 0} tone="slate" />
         <KpiCard title="Proveedores" value={kpis.totalProveedores || 0} tone="slate" detail="Preparado para modulo futuro" />
         <KpiCard title="Productos" value={kpis.totalProductos || 0} tone="slate" detail="Preparado para inventario" />
-        <KpiCard title="Cotizaciones" value={kpis.totalCotizaciones || 0} tone="indigo" />
+        <KpiCard title="Propuestas" value={kpis.totalCotizaciones || 0} tone="indigo" />
         <KpiCard title="Ventas registradas" value={kpis.totalVentas || 0} tone="indigo" />
         <KpiCard title="Ingresos del mes" value={formatUsd(kpis.ingresosMes)} tone="emerald" />
         <KpiCard title="Egresos del mes" value={formatUsd(kpis.egresosMes)} tone="red" />

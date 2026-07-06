@@ -9,6 +9,8 @@ const port = process.env.PORT || 5000;
 const MOVIMIENTO_TIPOS = ['INGRESO', 'EGRESO', 'CUENTA_POR_COBRAR', 'CUENTA_POR_PAGAR'];
 const MOVIMIENTO_ESTADOS = ['PENDIENTE', 'PAGADO', 'VENCIDO', 'ANULADO'];
 const PENDIENTE_ESTADOS = ['PENDIENTE', 'VENCIDO'];
+const DOCUMENTO_TIPOS = ['PROPUESTA', 'PRESUPUESTO'];
+const DOCUMENTO_ESTADOS = ['BORRADOR', 'APROBADO', 'CONVERTIDO', 'FACTURADO', 'ANULADO'];
 
 app.use(cors());
 app.use(express.json());
@@ -27,6 +29,68 @@ const parseDate = (value) => {
 
 const serializeError = (res, status, message, details) => {
   res.status(status).json({ error: message, details });
+};
+
+const prefijoDocumento = (tipoDocumento) => (tipoDocumento === 'PRESUPUESTO' ? 'PRES' : 'PROP');
+
+const formatCorrelativo = (tipoDocumento, secuencia) => {
+  return `${prefijoDocumento(tipoDocumento)}-${String(secuencia).padStart(6, '0')}`;
+};
+
+const obtenerSiguienteCorrelativo = async (tx, tipoDocumento = 'PROPUESTA') => {
+  if (!DOCUMENTO_TIPOS.includes(tipoDocumento)) {
+    throw new Error('tipoDocumento invalido.');
+  }
+
+  const prefijo = prefijoDocumento(tipoDocumento);
+  const ultimo = await tx.cotizacion.findFirst({
+    where: {
+      tipoDocumento,
+      numero: { startsWith: `${prefijo}-` },
+    },
+    orderBy: { numero: 'desc' },
+  });
+
+  const ultimoNumero = ultimo?.numero?.split('-').at(-1);
+  const secuencia = Number.parseInt(ultimoNumero, 10);
+  return formatCorrelativo(tipoDocumento, Number.isFinite(secuencia) ? secuencia + 1 : 1);
+};
+
+const normalizeCotizacionPayload = (body) => {
+  const errors = [];
+  const tipoDocumento = body.tipoDocumento || 'PROPUESTA';
+  const estado = body.estado || 'BORRADOR';
+  const subtotal = toNumber(body.subtotal);
+  const iva = toNumber(body.iva);
+  const total = toNumber(body.total);
+  const items = Array.isArray(body.items) ? body.items : [];
+
+  if (!DOCUMENTO_TIPOS.includes(tipoDocumento)) errors.push('tipoDocumento debe ser PROPUESTA o PRESUPUESTO.');
+  if (!DOCUMENTO_ESTADOS.includes(estado)) errors.push('estado debe ser valido.');
+  if (!body.clienteId) errors.push('clienteId es obligatorio.');
+  if (!body.vigencia || !body.vigencia.toString().trim()) errors.push('vigencia es obligatoria.');
+  if (!body.condiciones || !body.condiciones.toString().trim()) errors.push('condiciones es obligatoria.');
+  if (!Array.isArray(body.items)) errors.push('items debe ser un arreglo.');
+  if (Number.isNaN(subtotal) || subtotal === null || subtotal < 0) errors.push('subtotal debe ser numerico y mayor o igual a 0.');
+  if (Number.isNaN(iva) || iva === null || iva < 0) errors.push('iva debe ser numerico y mayor o igual a 0.');
+  if (Number.isNaN(total) || total === null || total < 0) errors.push('total debe ser numerico y mayor o igual a 0.');
+
+  if (errors.length) return { errors };
+
+  return {
+    data: {
+      tipoDocumento,
+      clienteId: body.clienteId,
+      titulo: body.titulo?.toString().trim() || null,
+      vigencia: body.vigencia.toString().trim(),
+      condiciones: body.condiciones.toString(),
+      subtotal,
+      iva,
+      total,
+      items,
+      estado,
+    },
+  };
 };
 
 const normalizeMovimientoPayload = (body) => {
@@ -182,31 +246,150 @@ app.delete('/api/clientes/:id', async (req, res) => {
   }
 });
 
-// COTIZACIONES
-app.get('/api/cotizaciones', async (req, res) => {
+// PROPUESTAS / PRESUPUESTOS
+const listarCotizaciones = async (req, res) => {
   try {
-    res.json(await prisma.cotizacion.findMany({ include: { cliente: true }, orderBy: { fecha: 'desc' } }));
-  } catch (error) {
-    serializeError(res, 500, 'No se pudieron cargar las cotizaciones.');
-  }
-});
+    const where = { deletedAt: null };
+    if (DOCUMENTO_TIPOS.includes(req.query.tipoDocumento)) where.tipoDocumento = req.query.tipoDocumento;
 
-app.post('/api/cotizaciones', async (req, res) => {
-  try {
-    if (await prisma.cotizacion.findUnique({ where: { numero: req.body.numero } })) return res.status(400).json({ error: 'DUPLICADO' });
-    res.json(await prisma.cotizacion.create({ data: req.body }));
+    res.json(await prisma.cotizacion.findMany({
+      where,
+      include: { cliente: true },
+      orderBy: { fecha: 'desc' },
+    }));
   } catch (error) {
-    serializeError(res, 500, 'No se pudo crear la cotizacion.');
+    serializeError(res, 500, 'No se pudieron cargar las propuestas.');
   }
-});
+};
 
-app.put('/api/cotizaciones/:id', async (req, res) => {
+const obtenerCotizacion = async (req, res) => {
   try {
-    res.json(await prisma.cotizacion.update({ where: { id: req.params.id }, data: req.body }));
+    const cotizacion = await prisma.cotizacion.findFirst({
+      where: { id: req.params.id, deletedAt: null },
+      include: { cliente: true },
+    });
+
+    if (!cotizacion) return serializeError(res, 404, 'Documento no encontrado.');
+    res.json(cotizacion);
   } catch (error) {
-    serializeError(res, 400, 'No se pudo actualizar la cotizacion.');
+    serializeError(res, 500, 'No se pudo cargar el documento.');
   }
-});
+};
+
+const obtenerSiguienteCorrelativoHandler = async (req, res) => {
+  try {
+    const tipoDocumento = req.query.tipoDocumento || 'PROPUESTA';
+    if (!DOCUMENTO_TIPOS.includes(tipoDocumento)) {
+      return serializeError(res, 400, 'tipoDocumento debe ser PROPUESTA o PRESUPUESTO.');
+    }
+
+    const numero = await prisma.$transaction((tx) => obtenerSiguienteCorrelativo(tx, tipoDocumento));
+    res.json({ numero, tipoDocumento });
+  } catch (error) {
+    serializeError(res, 500, 'No se pudo generar el correlativo.');
+  }
+};
+
+const crearCotizacion = async (req, res) => {
+  const normalized = normalizeCotizacionPayload(req.body);
+  if (normalized.errors) return serializeError(res, 400, 'Datos invalidos.', normalized.errors);
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      const cotizacion = await prisma.$transaction(async (tx) => {
+        const numero = await obtenerSiguienteCorrelativo(tx, normalized.data.tipoDocumento);
+        return tx.cotizacion.create({
+          data: { ...normalized.data, numero },
+          include: { cliente: true },
+        });
+      });
+
+      return res.status(201).json(cotizacion);
+    } catch (error) {
+      if (error.code === 'P2002') continue;
+      if (error.code === 'P2003') return serializeError(res, 400, 'Cliente invalido.');
+      return serializeError(res, 500, 'No se pudo crear la propuesta.');
+    }
+  }
+
+  return serializeError(res, 409, 'No se pudo reservar un correlativo disponible.');
+};
+
+const actualizarCotizacion = async (req, res) => {
+  try {
+    const actual = await prisma.cotizacion.findFirst({
+      where: { id: req.params.id, deletedAt: null },
+    });
+
+    if (!actual) return serializeError(res, 404, 'Documento no encontrado.');
+
+    const merged = {
+      ...actual,
+      ...req.body,
+      items: req.body.items === undefined ? actual.items : req.body.items,
+    };
+    const normalized = normalizeCotizacionPayload(merged);
+    if (normalized.errors) return serializeError(res, 400, 'Datos invalidos.', normalized.errors);
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        const cotizacion = await prisma.$transaction(async (tx) => {
+          const numero = normalized.data.tipoDocumento !== actual.tipoDocumento
+            ? await obtenerSiguienteCorrelativo(tx, normalized.data.tipoDocumento)
+            : actual.numero;
+
+          return tx.cotizacion.update({
+            where: { id: req.params.id },
+            data: { ...normalized.data, numero },
+            include: { cliente: true },
+          });
+        });
+
+        return res.json(cotizacion);
+      } catch (error) {
+        if (error.code === 'P2002') continue;
+        if (error.code === 'P2003') return serializeError(res, 400, 'Cliente invalido.');
+        return serializeError(res, 500, 'No se pudo actualizar la propuesta.');
+      }
+    }
+
+    return serializeError(res, 409, 'No se pudo reservar un correlativo disponible.');
+  } catch (error) {
+    return serializeError(res, 500, 'No se pudo actualizar la propuesta.');
+  }
+};
+
+const eliminarCotizacion = async (req, res) => {
+  try {
+    const actual = await prisma.cotizacion.findFirst({
+      where: { id: req.params.id, deletedAt: null },
+    });
+
+    if (!actual) return serializeError(res, 404, 'Documento no encontrado.');
+
+    await prisma.cotizacion.update({
+      where: { id: req.params.id },
+      data: { deletedAt: new Date() },
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    serializeError(res, 400, 'No se pudo eliminar la propuesta.');
+  }
+};
+
+app.get('/api/propuestas/siguiente-correlativo', obtenerSiguienteCorrelativoHandler);
+app.get('/api/propuestas', listarCotizaciones);
+app.get('/api/propuestas/:id', obtenerCotizacion);
+app.post('/api/propuestas', crearCotizacion);
+app.put('/api/propuestas/:id', actualizarCotizacion);
+app.delete('/api/propuestas/:id', eliminarCotizacion);
+
+app.get('/api/cotizaciones', listarCotizaciones);
+app.get('/api/cotizaciones/:id', obtenerCotizacion);
+app.post('/api/cotizaciones', crearCotizacion);
+app.put('/api/cotizaciones/:id', actualizarCotizacion);
+app.delete('/api/cotizaciones/:id', eliminarCotizacion);
 
 // TASAS
 app.get('/api/tasas', async (req, res) => {
@@ -230,7 +413,7 @@ app.get('/api/dashboard/resumen', async (req, res) => {
   try {
     const [totalClientes, totalCotizaciones, ventas, movimientos, ultimosMovimientos] = await Promise.all([
       prisma.cliente.count(),
-      prisma.cotizacion.count(),
+      prisma.cotizacion.count({ where: { deletedAt: null } }),
       prisma.venta.findMany(),
       prisma.movimientoContable.findMany(),
       prisma.movimientoContable.findMany({

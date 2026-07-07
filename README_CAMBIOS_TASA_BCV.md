@@ -16,10 +16,12 @@
 Agregar en `.env` local o en el entorno Docker:
 
 ```bash
-BCV_API_URL=
+BCV_API_URL=https://ve.dolarapi.com/v1/dolares/oficial
 BCV_API_TIMEOUT_MS=5000
 BCV_API_CACHE_TTL_SECONDS=3600
 ```
+
+Si `BCV_API_URL` no se define, el backend usa `https://ve.dolarapi.com/v1/dolares/oficial` como fuente por defecto.
 
 No se debe consultar la API externa desde el frontend. El frontend siempre usa `/api/tasas/bcv`.
 

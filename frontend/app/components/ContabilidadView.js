@@ -54,7 +54,7 @@ const formatBs = (value) => currency(value || 0, { symbol: 'Bs ', separator: '.'
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString('es-VE', { timeZone: 'UTC' }) : '-');
 const toDateInput = (value) => (value ? new Date(value).toISOString().slice(0, 10) : '');
 
-export default function ContabilidadView({ clientes = [], onChanged }) {
+export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActual }) {
   const [movimientos, setMovimientos] = useState([]);
   const [resumen, setResumen] = useState({});
   const [loading, setLoading] = useState(false);
@@ -135,6 +135,19 @@ export default function ContabilidadView({ clientes = [], onChanged }) {
   useEffect(() => {
     cargarTasaBcv({ skipConfirm: true });
   }, []);
+
+  useEffect(() => {
+    if (!tasaBcvActual?.tasa || editingId || form.tasaEditadaManual) return;
+
+    setForm((prev) => ({
+      ...prev,
+      tasaBcv: tasaBcvActual.tasa.toString(),
+      tasaFuente: tasaBcvActual.fuente || 'BCV_API',
+      tasaFecha: tasaBcvActual.fecha || '',
+      tasaEditadaManual: false,
+    }));
+    setTasaMensaje(tasaFuenteLabel[tasaBcvActual.fuente] || tasaFuenteLabel.BCV_API);
+  }, [tasaBcvActual?.version]);
 
   const handleFilterSearch = (event) => {
     event.preventDefault();

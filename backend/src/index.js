@@ -16,6 +16,7 @@ const PENDIENTE_ESTADOS = ['PENDIENTE', 'VENCIDO'];
 const DOCUMENTO_TIPOS = ['PROPUESTA', 'PRESUPUESTO'];
 const DOCUMENTO_ESTADOS = ['BORRADOR', 'APROBADO', 'CONVERTIDO', 'FACTURADO', 'ANULADO'];
 const TASA_FUENTES = ['BCV_API', 'MANUAL', 'CACHE', 'FALLBACK'];
+const DEFAULT_BCV_API_URL = 'https://ve.dolarapi.com/v1/dolares/oficial';
 const BCV_API_TIMEOUT_MS = readPositiveNumber(process.env.BCV_API_TIMEOUT_MS, 5000);
 const BCV_API_CACHE_TTL_SECONDS = readPositiveNumber(process.env.BCV_API_CACHE_TTL_SECONDS, 3600);
 let bcvCache = null;
@@ -134,16 +135,7 @@ const consultarTasaBcv = async () => {
     };
   }
 
-  const url = process.env.BCV_API_URL;
-  if (!url) {
-    const fallback = await fallbackTasaGuardada();
-    if (fallback) return fallback;
-
-    return {
-      success: false,
-      message: 'No se pudo obtener la tasa BCV actual. Ingrese la tasa manualmente.',
-    };
-  }
+  const url = process.env.BCV_API_URL || DEFAULT_BCV_API_URL;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), BCV_API_TIMEOUT_MS);

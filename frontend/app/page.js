@@ -44,6 +44,7 @@ export default function TamikaERP() {
   const [loadingDashboard, setLoadingDashboard] = useState(false);
   const [tasaBCV, setTasaBCV] = useState('');
   const [tasaParalelo, setTasaParalelo] = useState('');
+  const [tasaBcvActual, setTasaBcvActual] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -101,16 +102,22 @@ export default function TamikaERP() {
 
   const consultarApiTasas = async () => {
     try {
-      const resBcv = await fetch('https://ve.dolarapi.com/v1/dolares/oficial'); const dataBcv = await resBcv.json();
+      const resBcv = await fetch('/api/tasas/bcv'); const dataBcv = await resBcv.json();
       const resPar = await fetch('https://ve.dolarapi.com/v1/dolares/paralelo'); const dataPar = await resPar.json();
-      setTasaBCV(dataBcv.promedio.toString().replace('.', ',')); setTasaParalelo(dataPar.promedio.toString().replace('.', ','));
-      handleGlobalChange('defRel', 'rel', (dataBcv.promedio / dataPar.promedio).toFixed(4).replace('.', ',')); alert("Tasas actualizadas.");
+      if (!resBcv.ok || !dataBcv.success || !dataBcv.tasa) throw new Error(dataBcv.message || 'No se pudo obtener la tasa BCV.');
+      const bcv = Number(dataBcv.tasa);
+      const paralelo = Number(dataPar.promedio || 0);
+      setTasaBCV(bcv.toString().replace('.', ',')); setTasaParalelo(paralelo.toString().replace('.', ','));
+      setTasaBcvActual({ tasa: bcv, fuente: dataBcv.fuente || 'BCV_API', fecha: dataBcv.fecha || '', version: Date.now() });
+      if (bcv > 0 && paralelo > 0) handleGlobalChange('defRel', 'rel', (bcv / paralelo).toFixed(4).replace('.', ','));
+      alert("Tasas actualizadas.");
     } catch (e) { alert("Error API."); }
   };
 
   const guardarTasaBD = async () => {
     if (parseVe(tasaBCV) <= 0) return alert("Valores inválidos.");
     await fetch('/api/tasas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bcv: parseVe(tasaBCV), paralelo: parseVe(tasaParalelo) }) });
+    setTasaBcvActual({ tasa: parseVe(tasaBCV), fuente: 'MANUAL', fecha: new Date().toISOString(), version: Date.now() });
     alert("Tasas guardadas.");
   };
 
@@ -433,7 +440,7 @@ export default function TamikaERP() {
         {activeView === 'dashboard' && (<DashboardView resumen={dashboardResumen} loading={loadingDashboard} />)}
 
         {activeView === 'contabilidad' && (
-          <ContabilidadView clientes={clientes} onChanged={cargarDatos} />
+          <ContabilidadView clientes={clientes} onChanged={cargarDatos} tasaBcvActual={tasaBcvActual} />
         )}
 
         {/* CATALOGOS */}

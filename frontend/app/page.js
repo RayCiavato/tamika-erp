@@ -67,6 +67,7 @@ const getBase64ImageFromURL = (url) => {
 export default function TamikaERP() {
   const [isMounted, setIsMounted] = useState(false);
   const [activeView, setActiveView] = useState('dashboard');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [authToken, setAuthToken] = useState('');
   const [authUser, setAuthUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -669,33 +670,76 @@ export default function TamikaERP() {
     );
   }
 
+  const navItems = [
+    { id: 'dashboard', label: 'Dashboard', short: 'D' },
+    { id: 'cotizacion', label: 'Propuestas', short: 'P' },
+    { id: 'contabilidad', label: 'Contabilidad', short: 'CO' },
+    { id: 'reportes', label: 'Reportes', short: 'R' },
+    { id: 'catalogos', label: 'Catálogos', short: 'CA' },
+    ...(authUser?.rol === 'ADMIN' ? [{ id: 'usuarios', label: 'Usuarios', short: 'U' }, { id: 'auditoria', label: 'Auditoría', short: 'A' }] : []),
+  ];
+  const userInitial = authUser?.nombre?.trim()?.charAt(0)?.toUpperCase() || 'U';
+
   return (
     <div className="flex min-h-screen flex-col font-sans bg-slate-50 text-slate-900 lg:flex-row">
-      <aside className="z-10 flex w-full flex-col gap-4 bg-slate-900 p-5 text-slate-100 shadow-xl lg:sticky lg:top-0 lg:h-screen lg:w-80 lg:shrink-0 lg:overflow-y-auto">
-        <div className="flex items-center gap-3 mb-4">
+      <aside className={`z-10 flex w-full flex-col gap-4 bg-slate-900 p-5 text-slate-100 shadow-xl transition-all duration-300 lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:overflow-y-auto ${sidebarCollapsed ? 'lg:w-20 lg:p-4' : 'lg:w-80 lg:p-5'}`}>
+        <div className={`mb-4 flex items-center gap-3 ${sidebarCollapsed ? 'lg:flex-col lg:justify-center lg:gap-3' : ''}`}>
           <div className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl border border-slate-700 bg-white">
             <img src="/logo.png" alt="" className="h-8 w-8 object-contain" />
           </div>
-          <div><h1 className="text-lg font-bold leading-tight">TAMIKA ERP</h1></div>
+          <div className={sidebarCollapsed ? 'lg:hidden' : ''}><h1 className="text-lg font-bold leading-tight">TAMIKA ERP</h1></div>
+          <button
+            type="button"
+            onClick={() => setSidebarCollapsed((prev) => !prev)}
+            title={sidebarCollapsed ? 'Expandir menú' : 'Plegar menú'}
+            aria-label={sidebarCollapsed ? 'Expandir menú' : 'Plegar menú'}
+            className={`ml-auto grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 ${sidebarCollapsed ? 'lg:ml-0' : ''}`}
+          >
+            <span className="sr-only">{sidebarCollapsed ? 'Expandir menú' : 'Plegar menú'}</span>
+            <span className="flex flex-col gap-1">
+              <span className="block h-0.5 w-4 rounded bg-current" />
+              <span className="block h-0.5 w-4 rounded bg-current" />
+              <span className="block h-0.5 w-4 rounded bg-current" />
+            </span>
+          </button>
         </div>
-        <nav className="flex flex-col gap-2">
-          {[
-            { id: 'dashboard', label: 'Dashboard' },
-            { id: 'cotizacion', label: 'Propuestas' },
-            { id: 'contabilidad', label: 'Contabilidad' },
-            { id: 'reportes', label: 'Reportes' },
-            { id: 'catalogos', label: 'Catálogos' },
-            ...(authUser?.rol === 'ADMIN' ? [{ id: 'usuarios', label: 'Usuarios' }, { id: 'auditoria', label: 'Auditoría' }] : []),
-          ].map((view) => (
-            <button key={view.id} onClick={() => setActiveView(view.id)} className={`text-left px-4 py-3 rounded-lg font-medium ${activeView === view.id ? 'bg-slate-700 text-emerald-400' : 'hover:bg-slate-800 text-slate-300'}`}>{view.label}</button>
+        <nav className={`flex flex-col gap-2 ${sidebarCollapsed ? 'lg:items-center' : ''}`}>
+          {navItems.map((view) => (
+            <button
+              key={view.id}
+              onClick={() => setActiveView(view.id)}
+              title={sidebarCollapsed ? view.label : undefined}
+              aria-label={view.label}
+              className={`rounded-lg px-4 py-3 text-left font-medium transition-colors ${sidebarCollapsed ? 'lg:grid lg:h-11 lg:w-11 lg:place-items-center lg:px-0 lg:py-0 lg:text-center' : ''} ${activeView === view.id ? 'bg-slate-700 text-emerald-400' : 'hover:bg-slate-800 text-slate-300'}`}
+            >
+              <span className={sidebarCollapsed ? 'lg:hidden' : ''}>{view.label}</span>
+              <span className={sidebarCollapsed ? 'hidden text-xs font-extrabold lg:block' : 'hidden'}>{view.short}</span>
+            </button>
           ))}
         </nav>
-        <div className="rounded-xl border border-slate-700 bg-slate-800 p-4 text-sm">
-          <p className="font-bold text-white">{authUser.nombre}</p>
-          <p className="text-xs text-slate-400">{authUser.email}</p>
-          <button onClick={logout} className="mt-3 w-full rounded-lg bg-slate-700 px-3 py-2 text-xs font-bold text-white hover:bg-slate-600">Salir</button>
+        <div className={`rounded-xl border border-slate-700 bg-slate-800 p-4 text-sm ${sidebarCollapsed ? 'lg:p-2' : ''}`}>
+          <div className={sidebarCollapsed ? 'lg:grid lg:place-items-center' : ''}>
+            <div className={sidebarCollapsed ? 'hidden h-10 w-10 place-items-center rounded-full bg-slate-700 text-sm font-extrabold text-emerald-300 lg:grid' : 'hidden'}>{userInitial}</div>
+            <div className={sidebarCollapsed ? 'lg:hidden' : ''}>
+              <p className="font-bold text-white">{authUser.nombre}</p>
+              <p className="break-all text-xs text-slate-400">{authUser.email}</p>
+            </div>
+          </div>
+          <button
+            onClick={logout}
+            title="Salir"
+            aria-label="Salir"
+            className={`mt-3 w-full rounded-lg bg-slate-700 px-3 py-2 text-xs font-bold text-white hover:bg-slate-600 ${sidebarCollapsed ? 'lg:grid lg:h-10 lg:w-10 lg:place-items-center lg:px-0 lg:py-0' : ''}`}
+          >
+            <span className={sidebarCollapsed ? 'lg:hidden' : ''}>Salir</span>
+            <svg className={sidebarCollapsed ? 'hidden h-4 w-4 lg:block' : 'hidden'} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M10 6H6v12h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M14 8l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M8 12h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
         </div>
-        <div className="bg-slate-800 rounded-xl p-4 mt-6 border border-slate-700">
+        <div className={`bg-slate-800 rounded-xl p-4 mt-6 border border-slate-700 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
           <h3 className="text-sm font-bold text-white mb-3">Tasas del Día</h3>
           <div className="flex gap-2 mb-3"><button onClick={consultarApiTasas} className="flex-1 bg-indigo-600 text-white text-xs py-1 rounded shadow">API</button><button onClick={guardarTasaBD} className="flex-1 bg-emerald-600 text-white text-xs py-1 rounded shadow">Guardar</button></div>
           <div className="space-y-3">

@@ -671,12 +671,12 @@ export default function TamikaERP() {
   }
 
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', short: 'D' },
-    { id: 'cotizacion', label: 'Propuestas', short: 'P' },
-    { id: 'contabilidad', label: 'Contabilidad', short: 'CO' },
-    { id: 'reportes', label: 'Reportes', short: 'R' },
-    { id: 'catalogos', label: 'Catálogos', short: 'CA' },
-    ...(authUser?.rol === 'ADMIN' ? [{ id: 'usuarios', label: 'Usuarios', short: 'U' }, { id: 'auditoria', label: 'Auditoría', short: 'A' }] : []),
+    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { id: 'cotizacion', label: 'Propuestas', icon: '📝' },
+    { id: 'contabilidad', label: 'Contabilidad', icon: '💼' },
+    { id: 'reportes', label: 'Reportes', icon: '📑' },
+    { id: 'catalogos', label: 'Catálogos', icon: '🗂️' },
+    ...(authUser?.rol === 'ADMIN' ? [{ id: 'usuarios', label: 'Usuarios', icon: '👥' }, { id: 'auditoria', label: 'Auditoría', icon: '🛡️' }] : []),
   ];
   const userInitial = authUser?.nombre?.trim()?.charAt(0)?.toUpperCase() || 'U';
 
@@ -713,7 +713,7 @@ export default function TamikaERP() {
               className={`rounded-lg px-4 py-3 text-left font-medium transition-colors ${sidebarCollapsed ? 'lg:grid lg:h-11 lg:w-11 lg:place-items-center lg:px-0 lg:py-0 lg:text-center' : ''} ${activeView === view.id ? 'bg-slate-700 text-emerald-400' : 'hover:bg-slate-800 text-slate-300'}`}
             >
               <span className={sidebarCollapsed ? 'lg:hidden' : ''}>{view.label}</span>
-              <span className={sidebarCollapsed ? 'hidden text-xs font-extrabold lg:block' : 'hidden'}>{view.short}</span>
+              <span className={sidebarCollapsed ? 'hidden text-xl leading-none lg:block' : 'hidden'} aria-hidden="true">{view.icon}</span>
             </button>
           ))}
         </nav>

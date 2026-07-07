@@ -488,9 +488,38 @@ export default function TamikaERP() {
         layout: 'noBorders',
         absolutePosition: { x: 18, y },
       });
-      const headerRightX = 270;
-      const headerRightWidth = 285;
-      const headerTitleFont = nombreDocumento.length > 10 ? 20 : 21;
+      const headerRightBlock = {
+        table: {
+          widths: [188],
+          body: [
+            [{
+              text: nombreDocumento,
+              fontSize: nombreDocumento.length > 10 ? 18 : 19,
+              bold: true,
+              color: '#333333',
+              alignment: 'right',
+              margin: [0, 0, 0, 17],
+            }],
+            [{
+              text: `Fecha: ${fechaPdf}`,
+              fontSize: 7,
+              color: '#555555',
+              alignment: 'right',
+              margin: [0, 0, 0, 13],
+            }],
+            [{
+              text: etiquetaNumeroPdf,
+              fontSize: 7,
+              bold: true,
+              color: '#444444',
+              alignment: 'right',
+              margin: [0, 0, 0, 0],
+            }],
+          ],
+        },
+        layout: 'noBorders',
+        absolutePosition: { x: 365, y: 50 },
+      };
 
       const docDefinition = {
         pageSize: 'A4',
@@ -506,9 +535,7 @@ export default function TamikaERP() {
             { image: logoBase64 || transparentPixel, width: 66, absolutePosition: { x: 22, y: 31 } },
             { text: 'Servicios\nTamika 0302,C.A', fontSize: 20, bold: true, color: '#333333', lineHeight: 0.84, absolutePosition: { x: 92, y: 35 } },
             { text: 'RIF.: J-50634330-4', fontSize: 12, color: '#444444', absolutePosition: { x: 95, y: 92 } },
-            { text: nombreDocumento, fontSize: headerTitleFont, bold: true, color: '#333333', alignment: 'right', absolutePosition: { x: headerRightX, y: 50 }, width: headerRightWidth },
-            { text: `Fecha: ${fechaPdf}`, fontSize: 7.6, color: '#555555', alignment: 'right', absolutePosition: { x: headerRightX, y: 88 }, width: headerRightWidth },
-            { text: etiquetaNumeroPdf, fontSize: 7.8, bold: true, color: '#444444', alignment: 'right', absolutePosition: { x: headerRightX, y: 112 }, width: headerRightWidth },
+            headerRightBlock,
             sidebarSection('CLIENTE', sidebarCliente, 158),
             sidebarSection('EMPRESA', sidebarEmpresa, 326),
             logoBase64

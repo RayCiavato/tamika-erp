@@ -179,8 +179,26 @@ const consultarTasaBcv = async () => {
 
 const prefijoDocumento = (tipoDocumento) => (tipoDocumento === 'PRESUPUESTO' ? 'PRES' : 'PROP');
 
-const formatCorrelativo = (tipoDocumento, secuencia) => {
-  return `${prefijoDocumento(tipoDocumento)}-${String(secuencia).padStart(6, '0')}`;
+const formatCorrelativo = (tipoDocumento, secuencia, ancho = 6) => {
+  return `${prefijoDocumento(tipoDocumento)}-${String(secuencia).padStart(Math.max(ancho, 6), '0')}`;
+};
+
+const extraerSecuenciaCorrelativo = (numero, tipoDocumento) => {
+  const valor = numero?.toString().trim();
+  const match = valor?.match(/(\d+)$/);
+  if (!match) return null;
+  const digitos = match[1];
+  const prefijoEsperado = valor.toUpperCase().startsWith(`${prefijoDocumento(tipoDocumento)}-`);
+  const soloDigitos = /^\d+$/.test(valor);
+  const legacyConCeros = /^0+\d+$/.test(digitos);
+  const legacyCorto = digitos.length <= 6;
+
+  if (!prefijoEsperado && !soloDigitos && !legacyConCeros && !legacyCorto) return null;
+  if (digitos.length > 8 || (!prefijoEsperado && !legacyConCeros && digitos.length > 6)) return null;
+
+  const secuencia = Number.parseInt(digitos, 10);
+  if (!Number.isFinite(secuencia)) return null;
+  return { secuencia, ancho: digitos.length };
 };
 
 const obtenerSiguienteCorrelativo = async (tx, tipoDocumento = 'PROPUESTA') => {
@@ -188,18 +206,32 @@ const obtenerSiguienteCorrelativo = async (tx, tipoDocumento = 'PROPUESTA') => {
     throw new Error('tipoDocumento invalido.');
   }
 
-  const prefijo = prefijoDocumento(tipoDocumento);
-  const ultimo = await tx.cotizacion.findFirst({
-    where: {
-      tipoDocumento,
-      numero: { startsWith: `${prefijo}-` },
-    },
-    orderBy: { numero: 'desc' },
+  const correlativos = await tx.cotizacion.findMany({
+    where: { tipoDocumento },
+    select: { numero: true },
   });
 
-  const ultimoNumero = ultimo?.numero?.split('-').at(-1);
-  const secuencia = Number.parseInt(ultimoNumero, 10);
-  return formatCorrelativo(tipoDocumento, Number.isFinite(secuencia) ? secuencia + 1 : 1);
+  const ultimo = correlativos.reduce((acc, item) => {
+    const parsed = extraerSecuenciaCorrelativo(item.numero, tipoDocumento);
+    if (!parsed) return acc;
+    if (parsed.secuencia > acc.secuencia) return parsed;
+    if (parsed.secuencia === acc.secuencia && parsed.ancho > acc.ancho) return parsed;
+    return acc;
+  }, { secuencia: 0, ancho: 6 });
+
+  return formatCorrelativo(tipoDocumento, ultimo.secuencia + 1, ultimo.ancho);
+};
+
+const validarNumeroDisponible = async (tx, numero, idActual = null) => {
+  if (!numero) return null;
+
+  const existente = await tx.cotizacion.findUnique({
+    where: { numero },
+    select: { id: true },
+  });
+
+  if (existente && existente.id !== idActual) return 'Ya existe un documento con ese correlativo.';
+  return null;
 };
 
 const normalizeCotizacionPayload = (body) => {
@@ -210,9 +242,11 @@ const normalizeCotizacionPayload = (body) => {
   const iva = toNumber(body.iva);
   const total = toNumber(body.total);
   const items = Array.isArray(body.items) ? body.items : [];
+  const numero = body.numero?.toString().trim() || null;
 
   if (!DOCUMENTO_TIPOS.includes(tipoDocumento)) errors.push('tipoDocumento debe ser PROPUESTA o PRESUPUESTO.');
   if (!DOCUMENTO_ESTADOS.includes(estado)) errors.push('estado debe ser valido.');
+  if (body.numero !== undefined && !numero) errors.push('numero no puede estar vacio.');
   if (!body.clienteId) errors.push('clienteId es obligatorio.');
   if (!body.vigencia || !body.vigencia.toString().trim()) errors.push('vigencia es obligatoria.');
   if (!body.condiciones || !body.condiciones.toString().trim()) errors.push('condiciones es obligatoria.');
@@ -234,8 +268,10 @@ const normalizeCotizacionPayload = (body) => {
       iva,
       total,
       items,
+      contenidoPropuesta: body.contenidoPropuesta?.toString() || null,
       estado,
     },
+    numero,
   };
 };
 
@@ -462,10 +498,19 @@ const crearCotizacion = async (req, res) => {
   const normalized = normalizeCotizacionPayload(req.body);
   if (normalized.errors) return serializeError(res, 400, 'Datos invalidos.', normalized.errors);
 
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  const maxAttempts = normalized.numero ? 1 : 5;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       const cotizacion = await prisma.$transaction(async (tx) => {
-        const numero = await obtenerSiguienteCorrelativo(tx, normalized.data.tipoDocumento);
+        const numero = normalized.numero || await obtenerSiguienteCorrelativo(tx, normalized.data.tipoDocumento);
+        const errorNumero = await validarNumeroDisponible(tx, numero);
+        if (errorNumero) {
+          const error = new Error(errorNumero);
+          error.statusCode = 409;
+          throw error;
+        }
+
         return tx.cotizacion.create({
           data: { ...normalized.data, numero },
           include: { cliente: true },
@@ -474,7 +519,9 @@ const crearCotizacion = async (req, res) => {
 
       return res.status(201).json(cotizacion);
     } catch (error) {
-      if (error.code === 'P2002') continue;
+      if (error.statusCode === 409) return serializeError(res, 409, error.message);
+      if (error.code === 'P2002' && !normalized.numero) continue;
+      if (error.code === 'P2002') return serializeError(res, 409, 'Ya existe un documento con ese correlativo.');
       if (error.code === 'P2003') return serializeError(res, 400, 'Cliente invalido.');
       return serializeError(res, 500, 'No se pudo crear la propuesta.');
     }
@@ -491,6 +538,7 @@ const actualizarCotizacion = async (req, res) => {
 
     if (!actual) return serializeError(res, 404, 'Documento no encontrado.');
 
+    const numeroEnPayload = Object.prototype.hasOwnProperty.call(req.body, 'numero');
     const merged = {
       ...actual,
       ...req.body,
@@ -498,13 +546,22 @@ const actualizarCotizacion = async (req, res) => {
     };
     const normalized = normalizeCotizacionPayload(merged);
     if (normalized.errors) return serializeError(res, 400, 'Datos invalidos.', normalized.errors);
+    const numeroSolicitado = numeroEnPayload ? normalized.numero : null;
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
         const cotizacion = await prisma.$transaction(async (tx) => {
-          const numero = normalized.data.tipoDocumento !== actual.tipoDocumento
+          const numero = numeroSolicitado
+            || (normalized.data.tipoDocumento !== actual.tipoDocumento
             ? await obtenerSiguienteCorrelativo(tx, normalized.data.tipoDocumento)
-            : actual.numero;
+            : actual.numero);
+
+          const errorNumero = await validarNumeroDisponible(tx, numero, actual.id);
+          if (errorNumero) {
+            const error = new Error(errorNumero);
+            error.statusCode = 409;
+            throw error;
+          }
 
           return tx.cotizacion.update({
             where: { id: req.params.id },
@@ -515,7 +572,9 @@ const actualizarCotizacion = async (req, res) => {
 
         return res.json(cotizacion);
       } catch (error) {
-        if (error.code === 'P2002') continue;
+        if (error.statusCode === 409) return serializeError(res, 409, error.message);
+        if (error.code === 'P2002' && !numeroSolicitado) continue;
+        if (error.code === 'P2002') return serializeError(res, 409, 'Ya existe un documento con ese correlativo.');
         if (error.code === 'P2003') return serializeError(res, 400, 'Cliente invalido.');
         return serializeError(res, 500, 'No se pudo actualizar la propuesta.');
       }

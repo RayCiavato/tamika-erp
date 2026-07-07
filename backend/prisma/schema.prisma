@@ -37,21 +37,22 @@ enum DocumentoTipo {
 }
 
 model Cotizacion {
-  id            String        @id @default(uuid())
-  numero        String        @unique
-  tipoDocumento DocumentoTipo @default(PROPUESTA)
-  clienteId     String
-  cliente       Cliente       @relation(fields: [clienteId], references: [id])
-  fecha         DateTime      @default(now())
-  vigencia      String
-  condiciones   String
-  subtotal      Float
-  iva           Float
-  total         Float
-  items         Json
-  titulo        String?
-  estado        String        @default("BORRADOR")
-  deletedAt     DateTime?
+  id                 String        @id @default(uuid())
+  numero             String        @unique
+  tipoDocumento      DocumentoTipo @default(PROPUESTA)
+  clienteId          String
+  cliente            Cliente       @relation(fields: [clienteId], references: [id])
+  fecha              DateTime      @default(now())
+  vigencia           String
+  condiciones        String
+  subtotal           Float
+  iva                Float
+  total              Float
+  items              Json
+  titulo             String?
+  contenidoPropuesta String?
+  estado             String        @default("BORRADOR")
+  deletedAt          DateTime?
 }
 
 model Tasa {

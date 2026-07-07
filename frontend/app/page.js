@@ -9,6 +9,7 @@ import 'react-quill-new/dist/quill.snow.css';
 
 const DEFAULT_TERMS = `<p>Los servicios se rigen por los lineamientos de ISO/IEC 27001, NIST CSF.</p><br/><p><strong>Precios:</strong> Los precios est&aacute;n expresados en USD (D&oacute;lares) e incluyen el Impuesto al Valor Agregado (IVA), salvo que se indique lo contrario.</p><p><strong>Validez:</strong> Los precios son v&aacute;lidos &uacute;nicamente para este cliente y negociaci&oacute;n en particular.</p><p><strong>Financiamiento:</strong> Opci&oacute;n de pago en 3 cuotas mensuales (50% inicial y 2 cuotas de 25%) en bol&iacute;vares, calculadas al tipo de cambio oficial del Banco Central de Venezuela (BCV) vigente en la fecha de cada pago.</p><p><strong>Variaciones de Precio:</strong> El precio de todos los productos que componen esta propuesta est&aacute; sujeto a variaci&oacute;n sin previo aviso, seg&uacute;n las condiciones actuales del mercado.</p><p><strong>Aprobaci&oacute;n:</strong> La aprobaci&oacute;n debe ser enviada v&iacute;a correo electr&oacute;nico.</p><p><strong>Validez de la Oferta:</strong> Esta oferta tiene una validez de 07 d&iacute;as h&aacute;biles.</p><p><strong>Confidencialidad:</strong> La informaci&oacute;n relacionada con esta propuesta es absolutamente confidencial y para uso exclusivo de la empresa a quien va dirigida, quien se compromete a mantener y respetar la confidencialidad de la informaci&oacute;n.</p><p><strong>Recursos Humanos:</strong> La empresa que recibe la cotizaci&oacute;n se compromete a no efectuar ofrecimiento alguno de tipo laboral al personal asignado al servicio solicitado durante el desarrollo de este, y hasta por tres (3) a&ntilde;os contados a partir de la fecha de culminaci&oacute;n.</p><p><strong>Costo de Infraestructura:</strong> El costo de infraestructura necesario para la implementaci&oacute;n y funcionamiento del sistema correr&aacute; por cuenta del cliente.</p><p><strong>Garant&iacute;a de Servicio:</strong> Cualquier garant&iacute;a de servicio se especificar&aacute; en un acuerdo por separado y estar&aacute; sujeta a los t&eacute;rminos y condiciones acordados.</p><p><strong>Soporte T&eacute;cnico:</strong> El soporte t&eacute;cnico ser&aacute; proporcionado seg&uacute;n los t&eacute;rminos especificados en la propuesta y no incluye soporte adicional fuera del alcance definido sin un costo adicional.</p><p><strong>Modificaciones:</strong> Cualquier modificaci&oacute;n a los t&eacute;rminos de esta propuesta deber&aacute; ser acordada por ambas partes y documentada formalmente.</p><p><strong>Inicio de Labores:</strong> No se iniciar&aacute;n labores de ning&uacute;n tipo sin la respectiva Orden de Servicio y/o anticipo de EL CLIENTE.</p><p><strong>Impacto de Disposiciones Gubernamentales:</strong> Cualesquiera disposiciones de &iacute;ndole gubernamental cuyo impacto incida de manera directa en el estipendio de Servicios TAMIKA 0302, C.A. ser&aacute; considerado motivo para evaluar, conjuntamente, reajustes en las tarifas o cambios en los t&eacute;rminos comerciales.</p><p><strong>Servicios Incluidos:</strong> Esta oferta no incluye otros servicios o especialidades distintas a las expresamente se&ntilde;aladas.</p>`;
 const DEFAULT_VIGENCIA = '15 días hábiles';
+const DEFAULT_PROPUESTA_CONTENT = `<p><strong>Proyecto:</strong> Implementación de servicios tecnológicos y soporte especializado.</p><p>Estimados señores:</p><p>De acuerdo con la información suministrada, presentamos nuestra propuesta técnica y económica para la ejecución del servicio solicitado.</p><p><strong>1. Introducción</strong></p><p>Servicios TAMIKA 0302, C.A. pone a disposición su equipo técnico y operativo para acompañar la implementación, configuración y puesta en marcha de la solución requerida.</p><p><strong>2. Objetivo general</strong></p><p>Ejecutar las actividades descritas en el alcance, manteniendo criterios de calidad, continuidad operativa y documentación técnica para el cliente.</p><p><strong>3. Alcance del servicio</strong></p><ul><li>Levantamiento y validación de requerimientos.</li><li>Planificación de actividades y recursos.</li><li>Ejecución de los servicios incluidos en la presente propuesta.</li><li>Pruebas funcionales, entrega y cierre documentado.</li></ul>`;
 
 const parseVe = (str) => { if (!str && str !== 0) return 0; if (typeof str === 'number') return str; return parseFloat(str.toString().replace(/\./g, '').replace(',', '.')) || 0; };
 const formatUsd = (val) => currency(val, { symbol: '$', separator: '.', decimal: ',' }).format();
@@ -56,6 +57,7 @@ export default function TamikaERP() {
   const [tituloCoti, setTituloCoti] = useState('');
   const [vigencia, setVigencia] = useState(DEFAULT_VIGENCIA);
   const [condiciones, setCondiciones] = useState(DEFAULT_TERMS);
+  const [contenidoPropuesta, setContenidoPropuesta] = useState(DEFAULT_PROPUESTA_CONTENT);
 
   const [advMode, setAdvMode] = useState(true);
   const [defGan, setDefGan] = useState('0,30');
@@ -83,6 +85,11 @@ export default function TamikaERP() {
     } catch (error) {
       setNroCoti('');
     }
+  };
+
+  const handleTipoDocumentoChange = (value) => {
+    setTipoDocumento(value);
+    cargarSiguienteCorrelativo(value);
   };
 
   const cargarDatos = () => {
@@ -149,6 +156,7 @@ export default function TamikaERP() {
     setClienteSelect('');
     setVigencia(DEFAULT_VIGENCIA);
     setCondiciones(DEFAULT_TERMS);
+    setContenidoPropuesta(DEFAULT_PROPUESTA_CONTENT);
     setItemsCoti([]);
     cargarSiguienteCorrelativo('PROPUESTA');
   };
@@ -162,7 +170,20 @@ export default function TamikaERP() {
 
   const guardarCotizacionBD = async () => {
     if(!clienteSelect) return alert("Selecciona un cliente.");
-    const payload = { tipoDocumento, estado: estadoDocumento, clienteId: clienteSelect, titulo: tituloCoti, vigencia, condiciones, subtotal: calcularSubtotal(), iva: calcularIva(), total: calcularTotal(), items: itemsCoti };
+    const payload = {
+      tipoDocumento,
+      numero: nroCoti.trim() || undefined,
+      estado: estadoDocumento,
+      clienteId: clienteSelect,
+      titulo: tituloCoti,
+      vigencia,
+      condiciones,
+      contenidoPropuesta: tipoDocumento === 'PROPUESTA' ? contenidoPropuesta : null,
+      subtotal: calcularSubtotal(),
+      iva: calcularIva(),
+      total: calcularTotal(),
+      items: itemsCoti,
+    };
     const res = await fetch(cotiEditandoId ? `/api/propuestas/${cotiEditandoId}` : '/api/propuestas', { method: cotiEditandoId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await res.json().catch(() => null);
     if (!res.ok) return alert(data?.details?.join('\n') || data?.error || "No se pudo guardar el documento.");
@@ -183,6 +204,7 @@ export default function TamikaERP() {
     setClienteSelect(coti.clienteId);
     setVigencia(coti.vigencia || DEFAULT_VIGENCIA);
     setCondiciones(coti.condiciones || DEFAULT_TERMS);
+    setContenidoPropuesta(coti.contenidoPropuesta || DEFAULT_PROPUESTA_CONTENT);
     setItemsCoti(Array.isArray(coti.items) ? coti.items : []);
     setShowModal(false);
   };
@@ -248,6 +270,21 @@ export default function TamikaERP() {
         window: window,
         defaultStyles: { p: { fontSize: 8, color: '#475569', margin: [0, 0, 0, 5], alignment: 'justify' }, strong: { bold: true, color: '#0f172a' } }
       });
+      const contenidoPropuestaFormateado = tipoDocumento === 'PROPUESTA' && contenidoPropuesta?.trim()
+        ? htmlToPdfmake(contenidoPropuesta, {
+          window: window,
+          defaultStyles: {
+            p: { fontSize: 9, color: '#334155', margin: [0, 0, 0, 7], alignment: 'justify', lineHeight: 1.18 },
+            strong: { bold: true, color: '#0f172a' },
+            ul: { margin: [12, 0, 0, 8] },
+            ol: { margin: [12, 0, 0, 8] },
+            li: { fontSize: 9, color: '#334155', margin: [0, 0, 0, 4] },
+          }
+        })
+        : [];
+      const contenidoPropuestaStack = Array.isArray(contenidoPropuestaFormateado)
+        ? contenidoPropuestaFormateado
+        : [contenidoPropuestaFormateado];
 
       // Estilo para las cajas con "cuerpo"
       const cardStyle = { fillColor: '#ffffff', border: [true, true, true, true], borderColor: ['#cbd5e1', '#cbd5e1', '#cbd5e1', '#cbd5e1'] };
@@ -340,6 +377,21 @@ export default function TamikaERP() {
           },
 
           tituloCoti ? { text: tituloCoti, alignment: 'center', bold: true, color: '#0f172a', fontSize: 12, margin: [0,0,0,15] } : null,
+
+          ...(contenidoPropuestaStack.length ? [{
+            table: {
+              widths: ['*'],
+              body: [[{
+                stack: contenidoPropuestaStack,
+                fillColor: '#ffffff',
+                margin: [14, 12, 14, 8],
+                border: [true, true, true, true],
+                borderColor: ['#cbd5e1', '#cbd5e1', '#cbd5e1', '#cbd5e1']
+              }]]
+            },
+            layout: 'noBorders',
+            margin: [0, 0, 0, 18]
+          }] : []),
 
           // TABLA DE ITEMS
           {
@@ -493,7 +545,7 @@ export default function TamikaERP() {
                 </div>
                 <div>
                   <label className="text-xs text-slate-500 font-bold uppercase">Tipo</label>
-                  <select value={tipoDocumento} onChange={(e)=>setTipoDocumento(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
+                  <select value={tipoDocumento} onChange={(e)=>handleTipoDocumentoChange(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
                     {DOCUMENTO_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                   </select>
                 </div>
@@ -505,7 +557,10 @@ export default function TamikaERP() {
                 </div>
                 <div>
                   <label className="text-xs text-slate-500 font-bold uppercase">Correlativo</label>
-                  <input type="text" value={nroCoti || 'Generando...'} readOnly className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none bg-slate-100 text-slate-700 font-mono font-bold" />
+                  <div className="mt-1 flex gap-2">
+                    <input type="text" value={nroCoti} onChange={(e)=>setNroCoti(e.target.value)} placeholder="Generando..." className="min-w-0 flex-1 border rounded-lg px-3 py-2 text-sm outline-none bg-white text-slate-700 font-mono font-bold focus:border-indigo-500" />
+                    <button type="button" onClick={() => cargarSiguienteCorrelativo(tipoDocumento)} className="rounded-lg border border-slate-300 bg-slate-100 px-3 text-xs font-bold text-slate-700 hover:bg-slate-200">Auto</button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs text-slate-500 font-bold uppercase">Vigencia</label>
@@ -526,6 +581,13 @@ export default function TamikaERP() {
                  </div>
                )}
              </div>
+
+             {tipoDocumento === 'PROPUESTA' && (
+               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                 <label className="text-xs text-slate-500 font-bold uppercase mb-2 block">Contenido interno de la propuesta</label>
+                 <ReactQuill theme="snow" value={contenidoPropuesta} onChange={setContenidoPropuesta} className="bg-white min-h-[220px] pb-10" />
+               </div>
+             )}
 
              <div className="border rounded-xl overflow-x-auto shadow-sm">
                <table className="w-full text-left text-sm min-w-max">

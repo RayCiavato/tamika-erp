@@ -9,10 +9,13 @@ datasource db {
 
 model Cliente {
   id                   String               @id @default(uuid())
+  codigoCliente        String?              @unique
   nombre               String
   alias                String?
   rif                  String               @unique
   direccion            String?
+  telefono             String?
+  email                String?
   creadoEn             DateTime             @default(now())
   ventas               Venta[]
   cotizaciones         Cotizacion[]
@@ -37,23 +40,29 @@ enum DocumentoTipo {
 }
 
 model Cotizacion {
-  id                 String        @id @default(uuid())
-  numero             String        @unique
-  tipoDocumento      DocumentoTipo @default(PROPUESTA)
-  clienteId          String
-  cliente            Cliente       @relation(fields: [clienteId], references: [id])
-  fecha              DateTime      @default(now())
-  vigencia           String
-  condiciones        String
-  subtotal           Float
-  iva                Float
-  total              Float
-  items              Json
-  titulo             String?
-  contenidoPropuesta String?
-  datosPdf           Json?
-  estado             String        @default("BORRADOR")
-  deletedAt          DateTime?
+  id                       String        @id @default(uuid())
+  numero                   String        @unique
+  tipoDocumento            DocumentoTipo @default(PROPUESTA)
+  clienteId                String
+  cliente                  Cliente       @relation(fields: [clienteId], references: [id])
+  fecha                    DateTime      @default(now())
+  vigencia                 String
+  condiciones              String
+  subtotal                 Float
+  iva                      Float
+  total                    Float
+  items                    Json
+  titulo                   String?
+  contenidoPropuesta       String?
+  datosPdf                 Json?
+  clienteCodigoSnapshot    String?
+  clienteNombreSnapshot    String?
+  clienteRifSnapshot       String?
+  clienteDireccionSnapshot String?
+  clienteTelefonoSnapshot  String?
+  clienteEmailSnapshot     String?
+  estado                   String        @default("BORRADOR")
+  deletedAt                DateTime?
 }
 
 model Tasa {
@@ -97,4 +106,37 @@ model MovimientoContable {
   referencia        String?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
+}
+
+model Usuario {
+  id           String     @id @default(uuid())
+  nombre       String
+  email        String     @unique
+  passwordHash String
+  rol          String     @default("USUARIO")
+  activo       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  auditLogs    AuditLog[]
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  usuarioId   String?
+  usuario     Usuario? @relation(fields: [usuarioId], references: [id])
+  accion      String
+  entidad     String
+  entidadId   String?
+  descripcion String
+  metadata    Json?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+}
+
+model ConfiguracionSistema {
+  clave     String   @id
+  valor     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

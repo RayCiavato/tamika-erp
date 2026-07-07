@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from 'react';
 import currency from 'currency.js';
 
 const formatUsd = (value) => currency(value || 0, { symbol: '$', separator: '.', decimal: ',' }).format();
@@ -18,9 +19,27 @@ const estadoStyles = {
   ANULADO: 'bg-slate-200 text-slate-700',
 };
 
-export default function DashboardView({ resumen, loading }) {
+export default function DashboardView({ resumen, loading, apiFetch }) {
   const kpis = resumen?.kpis || {};
   const ultimosMovimientos = resumen?.ultimosMovimientos || [];
+  const [periodo, setPeriodo] = useState('mensual');
+  const [balanceData, setBalanceData] = useState([]);
+  const [loadingBalance, setLoadingBalance] = useState(false);
+
+  useEffect(() => {
+    if (!apiFetch) return;
+    setLoadingBalance(true);
+    apiFetch(`/api/dashboard/balance?periodo=${periodo}`)
+      .then((res) => res.json())
+      .then((data) => setBalanceData(Array.isArray(data.data) ? data.data : []))
+      .catch(() => setBalanceData([]))
+      .finally(() => setLoadingBalance(false));
+  }, [periodo, apiFetch]);
+
+  const maxChartValue = useMemo(() => {
+    const values = balanceData.flatMap((item) => [item.ingresos, item.egresos, item.porCobrar, item.porPagar].map((value) => Math.abs(Number(value || 0))));
+    return Math.max(...values, 1);
+  }, [balanceData]);
 
   return (
     <div className="space-y-6">
@@ -38,13 +57,45 @@ export default function DashboardView({ resumen, loading }) {
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard title="Clientes" value={kpis.totalClientes || 0} tone="slate" />
-        <KpiCard title="Proveedores" value={kpis.totalProveedores || 0} tone="slate" detail="Preparado para modulo futuro" />
-        <KpiCard title="Productos" value={kpis.totalProductos || 0} tone="slate" detail="Preparado para inventario" />
         <KpiCard title="Propuestas" value={kpis.totalCotizaciones || 0} tone="indigo" />
         <KpiCard title="Ventas registradas" value={kpis.totalVentas || 0} tone="indigo" />
-        <KpiCard title="Ingresos del mes" value={formatUsd(kpis.ingresosMes)} tone="emerald" />
-        <KpiCard title="Egresos del mes" value={formatUsd(kpis.egresosMes)} tone="red" />
+        <KpiCard title="Ingresos reales" value={formatUsd(kpis.ingresosReales)} tone="emerald" />
+        <KpiCard title="Egresos reales" value={formatUsd(kpis.egresosReales)} tone="red" />
         <KpiCard title="Balance actual" value={formatUsd(kpis.balanceActual)} tone={kpis.balanceActual >= 0 ? 'emerald' : 'red'} />
+        <KpiCard title="Facturas pagadas" value={kpis.facturasPagadas || 0} tone="emerald" />
+        <KpiCard title="Facturas pendientes" value={kpis.facturasPendientes || 0} tone="red" />
+        <KpiCard title="Total mensual" value={formatUsd(kpis.totalMensual)} tone={kpis.totalMensual >= 0 ? 'emerald' : 'red'} />
+        <KpiCard title="Total anual" value={formatUsd(kpis.totalAnual)} tone={kpis.totalAnual >= 0 ? 'emerald' : 'red'} />
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="font-bold text-slate-950">Balance por período</h3>
+            <p className="text-sm text-slate-500">Ingresos, egresos y pendientes calculados desde movimientos reales.</p>
+          </div>
+          <select value={periodo} onChange={(e) => setPeriodo(e.target.value)} className="input w-full sm:w-44">
+            <option value="diario">Diario</option>
+            <option value="semanal">Semanal</option>
+            <option value="mensual">Mensual</option>
+            <option value="anual">Anual</option>
+          </select>
+        </div>
+        {loadingBalance && <p className="text-sm text-slate-500">Cargando gráfica...</p>}
+        {!loadingBalance && balanceData.length === 0 && <p className="text-sm text-slate-500">Sin movimientos para graficar.</p>}
+        <div className="space-y-3">
+          {balanceData.map((item) => (
+            <div key={item.label} className="grid grid-cols-[88px_1fr] gap-3 text-xs sm:grid-cols-[110px_1fr]">
+              <div className="pt-1 font-bold text-slate-500">{item.label}</div>
+              <div className="space-y-1">
+                <ChartBar label="Ingresos" value={item.ingresos} max={maxChartValue} tone="bg-emerald-500" />
+                <ChartBar label="Egresos" value={item.egresos} max={maxChartValue} tone="bg-red-500" />
+                <ChartBar label="Por cobrar" value={item.porCobrar} max={maxChartValue} tone="bg-amber-500" />
+                <ChartBar label="Por pagar" value={item.porPagar} max={maxChartValue} tone="bg-slate-500" />
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -103,6 +154,20 @@ export default function DashboardView({ resumen, loading }) {
           </table>
         </div>
       </section>
+    </div>
+  );
+}
+
+function ChartBar({ label, value, max, tone }) {
+  const width = Math.max(4, Math.round((Number(value || 0) / max) * 100));
+
+  return (
+    <div className="grid grid-cols-[72px_1fr_86px] items-center gap-2">
+      <span className="text-slate-500">{label}</span>
+      <div className="h-3 overflow-hidden rounded bg-slate-100">
+        <div className={`h-full rounded ${tone}`} style={{ width: `${width}%` }} />
+      </div>
+      <span className="text-right font-bold text-slate-700">{formatUsd(value)}</span>
     </div>
   );
 }

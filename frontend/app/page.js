@@ -1,9 +1,11 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import currency from 'currency.js';
 import dynamic from 'next/dynamic';
 import DashboardView from './components/DashboardView';
 import ContabilidadView from './components/ContabilidadView';
+import ReportesContablesView from './components/ReportesContablesView';
+import AuditoriaView from './components/AuditoriaView';
 const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
 import 'react-quill-new/dist/quill.snow.css';
 
@@ -11,9 +13,12 @@ const DEFAULT_TERMS = `<p>Los servicios se rigen por los lineamientos de ISO/IEC
 const DEFAULT_VIGENCIA = '15 días hábiles';
 const DEFAULT_PROPUESTA_CONTENT = `<p><strong>1. Introducción</strong></p><p>Por medio de la presente, Servicios Tamika 0302, C.A. presenta su propuesta de servicios profesionales para la instalación, organización, configuración y puesta en marcha del servicio solicitado.</p><p>La presente propuesta está orientada a entregar una solución organizada, estable, escalable y documentada, alineada con buenas prácticas de infraestructura, seguridad, continuidad operativa y administración centralizada.</p><p><strong>2. Objetivo general</strong></p><p>Ejecutar la instalación, configuración, integración y puesta en producción de la solución requerida, garantizando un entorno ordenado, seguro y preparado para el crecimiento futuro.</p><p><strong>3. Alcance del servicio</strong></p><ul><li>Levantamiento y validación de requerimientos.</li><li>Planificación de actividades y recursos.</li><li>Ejecución de los servicios incluidos en la presente propuesta.</li><li>Pruebas funcionales, entrega y cierre documentado.</li></ul>`;
 const DEFAULT_PDF_DATA = {
+  clienteCodigo: '',
   clienteNombre: '',
   clienteRif: '',
   clienteDireccion: '',
+  clienteTelefono: '',
+  clienteEmail: '',
   empresaNombre: 'Servicios TAMIKA 0302, C.A.',
   empresaRif: 'J-50634330-4',
   empresaDireccion: 'Carretera Vieja Caracas - Baruta, Torre Gamma, Piso 9, Apto 9-B, Residencia Los Alpes, Caracas - Venezuela.',
@@ -35,9 +40,12 @@ const documentoLabel = (tipoDocumento) => (tipoDocumento === 'PRESUPUESTO' ? 'Pr
 const datosPdfDesdeCliente = (cliente, base = {}, preferCliente = false) => ({
   ...DEFAULT_PDF_DATA,
   ...base,
+  clienteCodigo: preferCliente ? (cliente?.codigoCliente || base.clienteCodigo || '') : (base.clienteCodigo || cliente?.codigoCliente || ''),
   clienteNombre: preferCliente ? (cliente?.nombre || base.clienteNombre || '') : (base.clienteNombre || cliente?.nombre || ''),
   clienteRif: preferCliente ? (cliente?.rif || base.clienteRif || '') : (base.clienteRif || cliente?.rif || ''),
   clienteDireccion: preferCliente ? (cliente?.direccion || base.clienteDireccion || '') : (base.clienteDireccion || cliente?.direccion || ''),
+  clienteTelefono: preferCliente ? (cliente?.telefono || base.clienteTelefono || '') : (base.clienteTelefono || cliente?.telefono || ''),
+  clienteEmail: preferCliente ? (cliente?.email || base.clienteEmail || '') : (base.clienteEmail || cliente?.email || ''),
 });
 
 const getBase64ImageFromURL = (url) => {
@@ -58,6 +66,12 @@ const getBase64ImageFromURL = (url) => {
 export default function TamikaERP() {
   const [isMounted, setIsMounted] = useState(false);
   const [activeView, setActiveView] = useState('dashboard');
+  const [authToken, setAuthToken] = useState('');
+  const [authUser, setAuthUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [requiresSetup, setRequiresSetup] = useState(false);
+  const [loginForm, setLoginForm] = useState({ nombre: '', email: '', password: '' });
+  const [loginError, setLoginError] = useState('');
 
   const [clientes, setClientes] = useState([]);
   const [historialCoti, setHistorialCoti] = useState([]);
@@ -88,19 +102,59 @@ export default function TamikaERP() {
   const [itemsCoti, setItemsCoti] = useState([]);
 
   const [nuevoNombre, setNuevoNombre] = useState('');
+  const [nuevoCodigoCliente, setNuevoCodigoCliente] = useState('');
   const [nuevoAlias, setNuevoAlias] = useState('');
   const [nuevoRif, setNuevoRif] = useState('');
   const [nuevaDir, setNuevaDir] = useState('');
+  const [nuevoTelefono, setNuevoTelefono] = useState('');
+  const [nuevoEmail, setNuevoEmail] = useState('');
   const [editandoId, setEditandoId] = useState(null);
 
-  useEffect(() => { setIsMounted(true); cargarDatos(); }, []);
+  const apiFetch = useCallback((url, options = {}) => {
+    const headers = {
+      ...(options.headers || {}),
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    };
+    return fetch(url, { ...options, headers });
+  }, [authToken]);
+
   useEffect(() => {
-    if (!cotiEditandoId) cargarSiguienteCorrelativo(tipoDocumento);
-  }, [tipoDocumento, cotiEditandoId]);
+    setIsMounted(true);
+    const savedToken = localStorage.getItem('tamika_token') || '';
+    if (!savedToken) {
+      fetch('/api/auth/setup-status')
+        .then(res => res.json())
+        .then(data => setRequiresSetup(Boolean(data.requiresSetup)))
+        .catch(() => setRequiresSetup(false))
+        .finally(() => setAuthLoading(false));
+      return;
+    }
+
+    setAuthToken(savedToken);
+    fetch('/api/auth/me', { headers: { Authorization: `Bearer ${savedToken}` } })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Sesion invalida.');
+        setAuthUser(data.user);
+      })
+      .catch(() => {
+        localStorage.removeItem('tamika_token');
+        setAuthToken('');
+        setAuthUser(null);
+      })
+      .finally(() => setAuthLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (authUser && authToken) cargarDatos();
+  }, [authUser, authToken]);
+  useEffect(() => {
+    if (authUser && !cotiEditandoId) cargarSiguienteCorrelativo(tipoDocumento);
+  }, [tipoDocumento, cotiEditandoId, authUser]);
 
   const cargarSiguienteCorrelativo = async (tipo = tipoDocumento) => {
     try {
-      const res = await fetch(`/api/propuestas/siguiente-correlativo?tipoDocumento=${tipo}`);
+      const res = await apiFetch(`/api/propuestas/siguiente-correlativo?tipoDocumento=${tipo}`);
       const data = await res.json();
       if (res.ok && data.numero) setNroCoti(data.numero);
     } catch (error) {
@@ -123,15 +177,55 @@ export default function TamikaERP() {
     setDatosPdf((prev) => ({ ...prev, [field]: value }));
   };
 
+  const guardarSesion = (data) => {
+    localStorage.setItem('tamika_token', data.token);
+    setAuthToken(data.token);
+    setAuthUser(data.user);
+    setRequiresSetup(false);
+    setLoginError('');
+  };
+
+  const handleAuthSubmit = async (event) => {
+    event.preventDefault();
+    setLoginError('');
+    const url = requiresSetup ? '/api/auth/register' : '/api/auth/login';
+    const payload = requiresSetup ? loginForm : { email: loginForm.email, password: loginForm.password };
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo iniciar sesion.');
+      guardarSesion(data);
+    } catch (error) {
+      setLoginError(error.message);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await apiFetch('/api/auth/logout', { method: 'POST' });
+    } catch (error) {
+      // El cierre local no depende de la respuesta del backend.
+    }
+    localStorage.removeItem('tamika_token');
+    setAuthToken('');
+    setAuthUser(null);
+    setActiveView('dashboard');
+  };
+
   const cargarDatos = () => {
-    fetch('/api/clientes').then(res => res.json()).then(data => setClientes(Array.isArray(data) ? data : []));
-    fetch('/api/propuestas').then(res => res.json()).then(data => setHistorialCoti(Array.isArray(data) ? data : []));
+    apiFetch('/api/clientes').then(res => res.json()).then(data => setClientes(Array.isArray(data) ? data : []));
+    apiFetch('/api/propuestas').then(res => res.json()).then(data => setHistorialCoti(Array.isArray(data) ? data : []));
     if (!cotiEditandoId) cargarSiguienteCorrelativo(tipoDocumento);
-    fetch('/api/tasas').then(res => res.json()).then(data => {
+    apiFetch('/api/tasas').then(res => res.json()).then(data => {
       if (data && data.bcv > 0) { setTasaBCV(data.bcv.toString().replace('.', ',')); setTasaParalelo(data.paralelo.toString().replace('.', ',')); setDefRel((data.bcv / data.paralelo).toFixed(4).replace('.', ',')); }
     });
     setLoadingDashboard(true);
-    fetch('/api/dashboard/resumen')
+    apiFetch('/api/dashboard/resumen')
       .then(res => res.json())
       .then(data => setDashboardResumen(data))
       .catch(() => setDashboardResumen(null))
@@ -140,7 +234,7 @@ export default function TamikaERP() {
 
   const consultarApiTasas = async () => {
     try {
-      const resBcv = await fetch('/api/tasas/bcv'); const dataBcv = await resBcv.json();
+      const resBcv = await apiFetch('/api/tasas/bcv'); const dataBcv = await resBcv.json();
       const resPar = await fetch('https://ve.dolarapi.com/v1/dolares/paralelo'); const dataPar = await resPar.json();
       if (!resBcv.ok || !dataBcv.success || !dataBcv.tasa) throw new Error(dataBcv.message || 'No se pudo obtener la tasa BCV.');
       const bcv = Number(dataBcv.tasa);
@@ -154,7 +248,7 @@ export default function TamikaERP() {
 
   const guardarTasaBD = async () => {
     if (parseVe(tasaBCV) <= 0) return alert("Valores inválidos.");
-    await fetch('/api/tasas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bcv: parseVe(tasaBCV), paralelo: parseVe(tasaParalelo) }) });
+    await apiFetch('/api/tasas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bcv: parseVe(tasaBCV), paralelo: parseVe(tasaParalelo) }) });
     setTasaBcvActual({ tasa: parseVe(tasaBCV), fuente: 'MANUAL', fecha: new Date().toISOString(), version: Date.now() });
     alert("Tasas guardadas.");
   };
@@ -217,7 +311,7 @@ export default function TamikaERP() {
       total: calcularTotal(),
       items: itemsCoti,
     };
-    const res = await fetch(cotiEditandoId ? `/api/propuestas/${cotiEditandoId}` : '/api/propuestas', { method: cotiEditandoId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const res = await apiFetch(cotiEditandoId ? `/api/propuestas/${cotiEditandoId}` : '/api/propuestas', { method: cotiEditandoId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await res.json().catch(() => null);
     if (!res.ok) return alert(data?.details?.join('\n') || data?.error || "No se pudo guardar el documento.");
     setCotiEditandoId(data.id);
@@ -245,7 +339,7 @@ export default function TamikaERP() {
 
   const eliminarPropuesta = async (coti) => {
     if (!confirm(`Eliminar ${documentoLabel(coti.tipoDocumento)} ${coti.numero}?`)) return;
-    const res = await fetch(`/api/propuestas/${coti.id}`, { method: 'DELETE' });
+    const res = await apiFetch(`/api/propuestas/${coti.id}`, { method: 'DELETE' });
     if (!res.ok) return alert("No se pudo eliminar el documento.");
     if (cotiEditandoId === coti.id) limpiarFormulario();
     cargarDatos();
@@ -253,11 +347,24 @@ export default function TamikaERP() {
 
   const guardarCliente = async (e) => {
     e.preventDefault();
-    await fetch(editandoId ? `/api/clientes/${editandoId}` : '/api/clientes', { method: editandoId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: nuevoNombre, alias: nuevoAlias, rif: nuevoRif, direccion: nuevaDir }) });
-    setEditandoId(null); setNuevoNombre(''); setNuevoAlias(''); setNuevoRif(''); setNuevaDir(''); cargarDatos();
+    await apiFetch(editandoId ? `/api/clientes/${editandoId}` : '/api/clientes', {
+      method: editandoId ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codigoCliente: nuevoCodigoCliente, nombre: nuevoNombre, alias: nuevoAlias, rif: nuevoRif, direccion: nuevaDir, telefono: nuevoTelefono, email: nuevoEmail }),
+    });
+    setEditandoId(null); setNuevoCodigoCliente(''); setNuevoNombre(''); setNuevoAlias(''); setNuevoRif(''); setNuevaDir(''); setNuevoTelefono(''); setNuevoEmail(''); cargarDatos();
   };
-  const iniciarEdicion = (cli) => { setEditandoId(cli.id); setNuevoNombre(cli.nombre); setNuevoAlias(cli.alias || ''); setNuevoRif(cli.rif); setNuevaDir(cli.direccion || ''); };
-  const eliminarCliente = async (id) => { if(confirm('¿Eliminar cliente?')) { await fetch(`/api/clientes/${id}`, { method: 'DELETE' }); cargarDatos(); } };
+  const cargarCodigoClienteAuto = async () => {
+    try {
+      const res = await apiFetch('/api/clientes/siguiente-codigo');
+      const data = await res.json();
+      if (res.ok && data.codigoCliente) setNuevoCodigoCliente(data.codigoCliente);
+    } catch (error) {
+      alert('No se pudo generar el codigo de cliente.');
+    }
+  };
+  const iniciarEdicion = (cli) => { setEditandoId(cli.id); setNuevoCodigoCliente(cli.codigoCliente || ''); setNuevoNombre(cli.nombre); setNuevoAlias(cli.alias || ''); setNuevoRif(cli.rif); setNuevaDir(cli.direccion || ''); setNuevoTelefono(cli.telefono || ''); setNuevoEmail(cli.email || ''); };
+  const eliminarCliente = async (id) => { if(confirm('¿Eliminar cliente?')) { await apiFetch(`/api/clientes/${id}`, { method: 'DELETE' }); cargarDatos(); } };
 
 
   // =====================================
@@ -279,11 +386,17 @@ export default function TamikaERP() {
       const dateStr = ('0'+d.getDate()).slice(-2) + ('0'+(d.getMonth()+1)).slice(-2) + d.getFullYear();
       const aliasStr = c?.alias ? `_${c.alias}` : '';
       const cleanTitle = `${nombreDocumento}_${nroCoti || 'sin_correlativo'}${aliasStr}_${dateStr}.pdf`.replace(/\s+/g, '_');
+      const numeroVisual = nroCoti?.toString().match(/(\d+)$/)?.[1];
+      const numeroVisualPdf = numeroVisual ? numeroVisual.padStart(7, '0') : (nroCoti || 'Pendiente');
+      const etiquetaNumeroPdf = tipoDocumento === 'PRESUPUESTO' ? `PRESUPUESTO NO. ${numeroVisualPdf}` : `COTIZACIÓN NO. ${numeroVisualPdf}`;
       const datosPdfActual = datosPdfDesdeCliente(c, datosPdf);
       const sidebarCliente = [
+        datosPdfActual.clienteCodigo,
         datosPdfActual.clienteNombre,
         datosPdfActual.clienteRif,
         datosPdfActual.clienteDireccion,
+        datosPdfActual.clienteTelefono,
+        datosPdfActual.clienteEmail,
       ].filter(Boolean);
       const sidebarEmpresa = [
         datosPdfActual.empresaNombre,
@@ -295,7 +408,8 @@ export default function TamikaERP() {
 
       const tableBody = [
         [
-          { text: 'DESCRIPCIÓN', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, margin: [4, 5], border: [false, false, false, false] },
+          { text: 'ITEM', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, alignment: 'center', margin: [4, 5], border: [false, false, false, false] },
+          { text: 'DESCRIPCIÓN DEL SERVICIO', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, margin: [4, 5], border: [false, false, false, false] },
           { text: 'CANT.', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, alignment: 'center', margin: [4, 5], border: [false, false, false, false] },
           { text: 'PRECIO UNID.', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, alignment: 'right', margin: [4, 5], border: [false, false, false, false] },
           { text: 'TOTAL USD', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, alignment: 'right', margin: [4, 5], border: [false, false, false, false] }
@@ -306,6 +420,7 @@ export default function TamikaERP() {
         const pUnit = getPUnitario(item);
         const bg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
         tableBody.push([
+          { text: String(idx + 1).padStart(2, '0'), fontSize: 7.5, color: '#1e293b', alignment: 'center', margin: [4, 5], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] },
           { text: item.desc || ' ', fontSize: 7.5, color: '#1e293b', margin: [4, 5], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] },
           { text: item.cant ? item.cant.toString() : '0', fontSize: 7.5, color: '#1e293b', alignment: 'center', margin: [4, 5], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] },
           { text: formatUsd(pUnit), fontSize: 7.5, color: '#1e293b', alignment: 'right', margin: [4, 5], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] },
@@ -360,7 +475,7 @@ export default function TamikaERP() {
             { text: 'RIF.: J-50634330-4', fontSize: 12, color: '#444444', absolutePosition: { x: 95, y: 92 } },
             { text: nombreDocumento, fontSize: 23, bold: true, color: '#333333', alignment: 'right', absolutePosition: { x: 390, y: 50 }, width: 170 },
             { text: `Fecha: ${fechaPdf}`, fontSize: 8, color: '#555555', alignment: 'right', absolutePosition: { x: 408, y: 88 }, width: 150 },
-            { text: `COTIZACIÓN NO. ${nroCoti || 'Pendiente'}`, fontSize: 8.5, bold: true, color: '#444444', alignment: 'right', absolutePosition: { x: 375, y: 112 }, width: 185 },
+            { text: etiquetaNumeroPdf, fontSize: 8.5, bold: true, color: '#444444', alignment: 'right', absolutePosition: { x: 360, y: 112 }, width: 200 },
             {
               stack: [
                 { text: 'CLIENTE', fontSize: 6.8, bold: true, color: '#333333', margin: [0, 0, 0, 8] },
@@ -377,8 +492,11 @@ export default function TamikaERP() {
               absolutePosition: { x: 19, y: 290 },
               width: 108,
             },
+            logoBase64
+              ? { image: logoBase64, width: 82, opacity: 0.1, absolutePosition: { x: 34, y: 560 } }
+              : { text: '', absolutePosition: { x: 34, y: 560 } },
             firmaUnificadaBase64
-              ? { image: firmaUnificadaBase64, width: 112, opacity: 0.78, absolutePosition: { x: 18, y: 662 } }
+              ? { image: firmaUnificadaBase64, width: 124, opacity: 0.86, absolutePosition: { x: 12, y: 652 } }
               : { text: '', absolutePosition: { x: 18, y: 662 } },
           ];
         },
@@ -400,7 +518,7 @@ export default function TamikaERP() {
           {
             table: {
               headerRows: 1,
-              widths: ['*', 30, 58, 64],
+              widths: [24, '*', 30, 58, 64],
               body: tableBody
             },
             layout: 'noBorders', // Los bordes se manejan a nivel de celda
@@ -432,12 +550,33 @@ export default function TamikaERP() {
 
           { text: 'TÉRMINOS Y CONDICIONES GENERALES', fontSize: 7.5, color: '#0f172a', bold: true, margin: [0, 0, 0, 6] },
           ...terminosFormateados,
+          {
+            unbreakable: true,
+            alignment: 'center',
+            margin: [0, 24, 0, 0],
+            stack: [
+              firmaUnificadaBase64 ? { image: firmaUnificadaBase64, width: 170, alignment: 'center', margin: [0, 0, 0, 4] } : { text: '' },
+              { text: 'Frank Salazar', bold: true, fontSize: 8, color: '#0f172a' },
+              { text: 'Servicios Tamika 0302, C.A.', fontSize: 7, color: '#334155' },
+              { text: '+584142087167 | frank.salazar@serviciostamika.com', fontSize: 7, color: '#334155' },
+            ]
+          },
         ]
       };
 
       if (accion === 'abrir') {
+        apiFetch('/api/audit-logs/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accion: 'PDF_GENERATE', entidad: 'Cotizacion', entidadId: cotiEditandoId, descripcion: `PDF generado para ${nroCoti || 'documento sin correlativo'}.`, metadata: { accion, tipoDocumento, numero: nroCoti } }),
+        }).catch(() => {});
         pdfMake.createPdf(docDefinition).open();
       } else {
+        apiFetch('/api/audit-logs/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accion: 'PDF_GENERATE', entidad: 'Cotizacion', entidadId: cotiEditandoId, descripcion: `PDF descargado para ${nroCoti || 'documento sin correlativo'}.`, metadata: { accion, tipoDocumento, numero: nroCoti } }),
+        }).catch(() => {});
         pdfMake.createPdf(docDefinition).download(cleanTitle);
       }
     } catch (err) {
@@ -447,6 +586,42 @@ export default function TamikaERP() {
   };
 
   if (!isMounted) return null;
+  if (authLoading) return <div className="grid min-h-screen place-items-center bg-slate-950 text-sm font-semibold text-white">Cargando TAMIKA ERP...</div>;
+  if (!authUser) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-slate-950 p-4 text-slate-900">
+        <form onSubmit={handleAuthSubmit} className="w-full max-w-md rounded-xl border border-slate-700 bg-white p-6 shadow-2xl">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="grid h-11 w-11 place-items-center overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <img src="/logo.png" alt="" className="h-9 w-9 object-contain" />
+            </div>
+            <div>
+              <h1 className="text-xl font-extrabold text-slate-950">TAMIKA ERP</h1>
+              <p className="text-sm text-slate-500">{requiresSetup ? 'Crear primer administrador' : 'Iniciar sesión'}</p>
+            </div>
+          </div>
+          {requiresSetup && (
+            <label className="mb-3 block text-xs font-bold text-slate-500">
+              Nombre
+              <input required value={loginForm.nombre} onChange={(e) => setLoginForm((prev) => ({ ...prev, nombre: e.target.value }))} className="input mt-1" />
+            </label>
+          )}
+          <label className="mb-3 block text-xs font-bold text-slate-500">
+            Email
+            <input required type="email" value={loginForm.email} onChange={(e) => setLoginForm((prev) => ({ ...prev, email: e.target.value }))} className="input mt-1" />
+          </label>
+          <label className="mb-4 block text-xs font-bold text-slate-500">
+            Contraseña
+            <input required type="password" minLength={8} value={loginForm.password} onChange={(e) => setLoginForm((prev) => ({ ...prev, password: e.target.value }))} className="input mt-1" />
+          </label>
+          {loginError && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{loginError}</div>}
+          <button className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-extrabold text-white shadow hover:bg-emerald-500">
+            {requiresSetup ? 'Crear administrador' : 'Entrar'}
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col font-sans bg-slate-50 text-slate-900 lg:flex-row">
@@ -462,11 +637,18 @@ export default function TamikaERP() {
             { id: 'dashboard', label: 'Dashboard' },
             { id: 'cotizacion', label: 'Propuestas' },
             { id: 'contabilidad', label: 'Contabilidad' },
+            { id: 'reportes', label: 'Reportes' },
             { id: 'catalogos', label: 'Catálogos' },
+            ...(authUser?.rol === 'ADMIN' ? [{ id: 'auditoria', label: 'Auditoría' }] : []),
           ].map((view) => (
             <button key={view.id} onClick={() => setActiveView(view.id)} className={`text-left px-4 py-3 rounded-lg font-medium ${activeView === view.id ? 'bg-slate-700 text-emerald-400' : 'hover:bg-slate-800 text-slate-300'}`}>{view.label}</button>
           ))}
         </nav>
+        <div className="rounded-xl border border-slate-700 bg-slate-800 p-4 text-sm">
+          <p className="font-bold text-white">{authUser.nombre}</p>
+          <p className="text-xs text-slate-400">{authUser.email}</p>
+          <button onClick={logout} className="mt-3 w-full rounded-lg bg-slate-700 px-3 py-2 text-xs font-bold text-white hover:bg-slate-600">Salir</button>
+        </div>
         <div className="bg-slate-800 rounded-xl p-4 mt-6 border border-slate-700">
           <h3 className="text-sm font-bold text-white mb-3">Tasas del Día</h3>
           <div className="flex gap-2 mb-3"><button onClick={consultarApiTasas} className="flex-1 bg-indigo-600 text-white text-xs py-1 rounded shadow">API</button><button onClick={guardarTasaBD} className="flex-1 bg-emerald-600 text-white text-xs py-1 rounded shadow">Guardar</button></div>
@@ -479,10 +661,18 @@ export default function TamikaERP() {
       </aside>
 
       <main className="relative min-w-0 flex-1 space-y-6 p-4 sm:p-6 lg:p-8">
-        {activeView === 'dashboard' && (<DashboardView resumen={dashboardResumen} loading={loadingDashboard} />)}
+        {activeView === 'dashboard' && (<DashboardView resumen={dashboardResumen} loading={loadingDashboard} apiFetch={apiFetch} />)}
 
         {activeView === 'contabilidad' && (
-          <ContabilidadView clientes={clientes} onChanged={cargarDatos} tasaBcvActual={tasaBcvActual} />
+          <ContabilidadView clientes={clientes} onChanged={cargarDatos} tasaBcvActual={tasaBcvActual} apiFetch={apiFetch} />
+        )}
+
+        {activeView === 'reportes' && (
+          <ReportesContablesView clientes={clientes} apiFetch={apiFetch} />
+        )}
+
+        {activeView === 'auditoria' && authUser?.rol === 'ADMIN' && (
+          <AuditoriaView apiFetch={apiFetch} />
         )}
 
         {/* CATALOGOS */}
@@ -490,17 +680,26 @@ export default function TamikaERP() {
           <section className="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
             <h2 className="text-xl font-bold mb-4">{editandoId ? 'Editar Cliente' : 'Gestión de Clientes'}</h2>
             <form onSubmit={guardarCliente} className="grid grid-cols-1 gap-3 mb-6 p-4 rounded-xl border bg-slate-50 items-end sm:grid-cols-2 xl:grid-cols-4">
+              <div>
+                <label className="text-xs text-slate-500 font-bold">ID Cliente</label>
+                <div className="flex gap-2">
+                  <input type="text" value={nuevoCodigoCliente} onChange={(e) => setNuevoCodigoCliente(e.target.value)} placeholder="CLI-2026-0001" className="w-full border rounded-lg px-3 py-2 text-sm outline-none" />
+                  <button type="button" onClick={cargarCodigoClienteAuto} className="rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700">Auto</button>
+                </div>
+              </div>
               <div><label className="text-xs text-slate-500 font-bold">Razón Social</label><input type="text" required value={nuevoNombre} onChange={(e) => setNuevoNombre(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
               <div><label className="text-xs text-slate-500 font-bold">Alias (Corto para PDF)</label><input type="text" placeholder="Ej: MPPOP" value={nuevoAlias} onChange={(e) => setNuevoAlias(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
               <div><label className="text-xs text-slate-500 font-bold">RIF</label><input type="text" required value={nuevoRif} onChange={(e) => setNuevoRif(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
+              <div><label className="text-xs text-slate-500 font-bold">Teléfono</label><input type="text" value={nuevoTelefono} onChange={(e) => setNuevoTelefono(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
+              <div><label className="text-xs text-slate-500 font-bold">Email</label><input type="email" value={nuevoEmail} onChange={(e) => setNuevoEmail(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
+              <div className="sm:col-span-2"><label className="text-xs text-slate-500 font-bold">Dirección Fiscal</label><input type="text" value={nuevaDir} onChange={(e) => setNuevaDir(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
               <div><button type="submit" className="w-full py-2 text-white bg-slate-900 rounded-lg text-sm font-medium">Guardar</button></div>
-              <div className="sm:col-span-2 xl:col-span-4"><label className="text-xs text-slate-500 font-bold">Dirección Fiscal</label><input type="text" value={nuevaDir} onChange={(e) => setNuevaDir(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
             </form>
             <table className="w-full text-left border-collapse">
-              <thead><tr className="bg-slate-100 text-sm"><th className="p-3">Nombre</th><th className="p-3">Alias</th><th className="p-3">RIF</th><th className="p-3 text-right">Acción</th></tr></thead>
+              <thead><tr className="bg-slate-100 text-sm"><th className="p-3">ID</th><th className="p-3">Nombre</th><th className="p-3">Alias</th><th className="p-3">RIF</th><th className="p-3">Contacto</th><th className="p-3 text-right">Acción</th></tr></thead>
               <tbody className="text-sm">
                 {clientes.map(cli => (
-                  <tr key={cli.id} className="border-b hover:bg-slate-50"><td className="p-3 font-medium">{cli.nombre}</td><td className="p-3 font-bold text-indigo-600">{cli.alias || '-'}</td><td className="p-3 text-slate-500">{cli.rif}</td><td className="p-3 text-right"><button onClick={() => iniciarEdicion(cli)} className="text-blue-600 font-medium mr-4">Editar</button><button onClick={() => eliminarCliente(cli.id)} className="text-red-500 font-medium">Eliminar</button></td></tr>
+                  <tr key={cli.id} className="border-b hover:bg-slate-50"><td className="p-3 font-mono text-xs font-bold text-slate-600">{cli.codigoCliente || '-'}</td><td className="p-3 font-medium">{cli.nombre}</td><td className="p-3 font-bold text-indigo-600">{cli.alias || '-'}</td><td className="p-3 text-slate-500">{cli.rif}</td><td className="p-3 text-slate-500"><span className="block">{cli.telefono || '-'}</span><span className="text-xs">{cli.email || ''}</span></td><td className="p-3 text-right"><button onClick={() => iniciarEdicion(cli)} className="text-blue-600 font-medium mr-4">Editar</button><button onClick={() => eliminarCliente(cli.id)} className="text-red-500 font-medium">Eliminar</button></td></tr>
                 ))}
               </tbody>
             </table>
@@ -526,7 +725,7 @@ export default function TamikaERP() {
                   <label className="text-xs text-slate-500 font-bold uppercase">Cliente</label>
                   <select value={clienteSelect} onChange={(e) => handleClienteChange(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
                     <option value="">-- Selecciona un Cliente --</option>
-                    {clientes.map(cli => ( <option key={cli.id} value={cli.id}>{cli.nombre} ({cli.alias})</option> ))}
+                    {clientes.map(cli => ( <option key={cli.id} value={cli.id}>{cli.codigoCliente ? `${cli.codigoCliente} - ` : ''}{cli.nombre} ({cli.rif})</option> ))}
                   </select>
                 </div>
                 <div className="lg:col-span-4">
@@ -576,6 +775,10 @@ export default function TamikaERP() {
                <h3 className="text-xs font-bold uppercase text-slate-500">Barra lateral del PDF</h3>
                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                  <div>
+                   <label className="text-xs font-bold text-slate-500">ID cliente</label>
+                   <input type="text" value={datosPdf.clienteCodigo} onChange={(e)=>updateDatosPdf('clienteCodigo', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
+                 </div>
+                 <div>
                    <label className="text-xs font-bold text-slate-500">Cliente</label>
                    <input type="text" value={datosPdf.clienteNombre} onChange={(e)=>updateDatosPdf('clienteNombre', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
                  </div>
@@ -586,6 +789,14 @@ export default function TamikaERP() {
                  <div className="md:col-span-2">
                    <label className="text-xs font-bold text-slate-500">Dirección cliente</label>
                    <textarea value={datosPdf.clienteDireccion} onChange={(e)=>updateDatosPdf('clienteDireccion', e.target.value)} rows={2} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none resize-y" />
+                 </div>
+                 <div>
+                   <label className="text-xs font-bold text-slate-500">Teléfono cliente</label>
+                   <input type="text" value={datosPdf.clienteTelefono} onChange={(e)=>updateDatosPdf('clienteTelefono', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
+                 </div>
+                 <div>
+                   <label className="text-xs font-bold text-slate-500">Email cliente</label>
+                   <input type="email" value={datosPdf.clienteEmail} onChange={(e)=>updateDatosPdf('clienteEmail', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
                  </div>
                  <div>
                    <label className="text-xs font-bold text-slate-500">Empresa</label>

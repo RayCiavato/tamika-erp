@@ -54,7 +54,7 @@ const formatBs = (value) => currency(value || 0, { symbol: 'Bs ', separator: '.'
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString('es-VE', { timeZone: 'UTC' }) : '-');
 const toDateInput = (value) => (value ? new Date(value).toISOString().slice(0, 10) : '');
 
-export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActual }) {
+export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActual, apiFetch = fetch }) {
   const [movimientos, setMovimientos] = useState([]);
   const [resumen, setResumen] = useState({});
   const [loading, setLoading] = useState(false);
@@ -80,7 +80,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
     });
 
     try {
-      const res = await fetch(`/api/contabilidad?${params.toString()}`);
+      const res = await apiFetch(`/api/contabilidad?${params.toString()}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'No se pudo cargar contabilidad.');
       setMovimientos(Array.isArray(data.movimientos) ? data.movimientos : []);
@@ -102,7 +102,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
     setTasaMensaje('');
 
     try {
-      const res = await fetch('/api/tasas/bcv');
+      const res = await apiFetch('/api/tasas/bcv');
       const data = await res.json();
 
       if (!data.success || !data.tasa) {
@@ -194,7 +194,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
     };
 
     try {
-      const res = await fetch(editingId ? `/api/contabilidad/${editingId}` : '/api/contabilidad', {
+      const res = await apiFetch(editingId ? `/api/contabilidad/${editingId}` : '/api/contabilidad', {
         method: editingId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -233,7 +233,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
 
   const cambiarEstado = async (mov, estado) => {
     try {
-      const res = await fetch(`/api/contabilidad/${mov.id}`, {
+      const res = await apiFetch(`/api/contabilidad/${mov.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ estado }),
@@ -250,7 +250,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
   const eliminarMovimiento = async (mov) => {
     if (!confirm(`Eliminar movimiento "${mov.concepto}"?`)) return;
     try {
-      const res = await fetch(`/api/contabilidad/${mov.id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/contabilidad/${mov.id}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'No se pudo eliminar.');
       await cargarMovimientos();

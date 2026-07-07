@@ -269,6 +269,7 @@ const normalizeCotizacionPayload = (body) => {
       total,
       items,
       contenidoPropuesta: body.contenidoPropuesta?.toString() || null,
+      datosPdf: body.datosPdf && typeof body.datosPdf === 'object' ? body.datosPdf : null,
       estado,
     },
     numero,

@@ -44,5 +44,7 @@ El borrado es logico. Los registros eliminados no aparecen en listados ni dashbo
 ## Contenido interno de propuesta
 
 - Se agrego el campo opcional `contenidoPropuesta String?` en `Cotizacion`.
+- Se agrego el campo opcional `datosPdf Json?` para guardar textos editables de la barra lateral del PDF.
 - El editor aparece solo para documentos de tipo `PROPUESTA`, debajo de `Mostrar campos avanzados`.
 - El contenido se guarda como HTML editable y se transforma a pdfmake al generar el PDF, manteniendo el formato existente del documento.
+- El PDF de propuesta recupera el formato A4 con barra lateral izquierda, bloque superior gris, cliente/empresa editables y firma lateral.

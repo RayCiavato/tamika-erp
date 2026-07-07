@@ -9,7 +9,19 @@ import 'react-quill-new/dist/quill.snow.css';
 
 const DEFAULT_TERMS = `<p>Los servicios se rigen por los lineamientos de ISO/IEC 27001, NIST CSF.</p><br/><p><strong>Precios:</strong> Los precios est&aacute;n expresados en USD (D&oacute;lares) e incluyen el Impuesto al Valor Agregado (IVA), salvo que se indique lo contrario.</p><p><strong>Validez:</strong> Los precios son v&aacute;lidos &uacute;nicamente para este cliente y negociaci&oacute;n en particular.</p><p><strong>Financiamiento:</strong> Opci&oacute;n de pago en 3 cuotas mensuales (50% inicial y 2 cuotas de 25%) en bol&iacute;vares, calculadas al tipo de cambio oficial del Banco Central de Venezuela (BCV) vigente en la fecha de cada pago.</p><p><strong>Variaciones de Precio:</strong> El precio de todos los productos que componen esta propuesta est&aacute; sujeto a variaci&oacute;n sin previo aviso, seg&uacute;n las condiciones actuales del mercado.</p><p><strong>Aprobaci&oacute;n:</strong> La aprobaci&oacute;n debe ser enviada v&iacute;a correo electr&oacute;nico.</p><p><strong>Validez de la Oferta:</strong> Esta oferta tiene una validez de 07 d&iacute;as h&aacute;biles.</p><p><strong>Confidencialidad:</strong> La informaci&oacute;n relacionada con esta propuesta es absolutamente confidencial y para uso exclusivo de la empresa a quien va dirigida, quien se compromete a mantener y respetar la confidencialidad de la informaci&oacute;n.</p><p><strong>Recursos Humanos:</strong> La empresa que recibe la cotizaci&oacute;n se compromete a no efectuar ofrecimiento alguno de tipo laboral al personal asignado al servicio solicitado durante el desarrollo de este, y hasta por tres (3) a&ntilde;os contados a partir de la fecha de culminaci&oacute;n.</p><p><strong>Costo de Infraestructura:</strong> El costo de infraestructura necesario para la implementaci&oacute;n y funcionamiento del sistema correr&aacute; por cuenta del cliente.</p><p><strong>Garant&iacute;a de Servicio:</strong> Cualquier garant&iacute;a de servicio se especificar&aacute; en un acuerdo por separado y estar&aacute; sujeta a los t&eacute;rminos y condiciones acordados.</p><p><strong>Soporte T&eacute;cnico:</strong> El soporte t&eacute;cnico ser&aacute; proporcionado seg&uacute;n los t&eacute;rminos especificados en la propuesta y no incluye soporte adicional fuera del alcance definido sin un costo adicional.</p><p><strong>Modificaciones:</strong> Cualquier modificaci&oacute;n a los t&eacute;rminos de esta propuesta deber&aacute; ser acordada por ambas partes y documentada formalmente.</p><p><strong>Inicio de Labores:</strong> No se iniciar&aacute;n labores de ning&uacute;n tipo sin la respectiva Orden de Servicio y/o anticipo de EL CLIENTE.</p><p><strong>Impacto de Disposiciones Gubernamentales:</strong> Cualesquiera disposiciones de &iacute;ndole gubernamental cuyo impacto incida de manera directa en el estipendio de Servicios TAMIKA 0302, C.A. ser&aacute; considerado motivo para evaluar, conjuntamente, reajustes en las tarifas o cambios en los t&eacute;rminos comerciales.</p><p><strong>Servicios Incluidos:</strong> Esta oferta no incluye otros servicios o especialidades distintas a las expresamente se&ntilde;aladas.</p>`;
 const DEFAULT_VIGENCIA = '15 días hábiles';
-const DEFAULT_PROPUESTA_CONTENT = `<p><strong>Proyecto:</strong> Implementación de servicios tecnológicos y soporte especializado.</p><p>Estimados señores:</p><p>De acuerdo con la información suministrada, presentamos nuestra propuesta técnica y económica para la ejecución del servicio solicitado.</p><p><strong>1. Introducción</strong></p><p>Servicios TAMIKA 0302, C.A. pone a disposición su equipo técnico y operativo para acompañar la implementación, configuración y puesta en marcha de la solución requerida.</p><p><strong>2. Objetivo general</strong></p><p>Ejecutar las actividades descritas en el alcance, manteniendo criterios de calidad, continuidad operativa y documentación técnica para el cliente.</p><p><strong>3. Alcance del servicio</strong></p><ul><li>Levantamiento y validación de requerimientos.</li><li>Planificación de actividades y recursos.</li><li>Ejecución de los servicios incluidos en la presente propuesta.</li><li>Pruebas funcionales, entrega y cierre documentado.</li></ul>`;
+const DEFAULT_PROPUESTA_CONTENT = `<p><strong>1. Introducción</strong></p><p>Por medio de la presente, Servicios Tamika 0302, C.A. presenta su propuesta de servicios profesionales para la instalación, organización, configuración y puesta en marcha del servicio solicitado.</p><p>La presente propuesta está orientada a entregar una solución organizada, estable, escalable y documentada, alineada con buenas prácticas de infraestructura, seguridad, continuidad operativa y administración centralizada.</p><p><strong>2. Objetivo general</strong></p><p>Ejecutar la instalación, configuración, integración y puesta en producción de la solución requerida, garantizando un entorno ordenado, seguro y preparado para el crecimiento futuro.</p><p><strong>3. Alcance del servicio</strong></p><ul><li>Levantamiento y validación de requerimientos.</li><li>Planificación de actividades y recursos.</li><li>Ejecución de los servicios incluidos en la presente propuesta.</li><li>Pruebas funcionales, entrega y cierre documentado.</li></ul>`;
+const DEFAULT_PDF_DATA = {
+  clienteNombre: '',
+  clienteRif: '',
+  clienteDireccion: '',
+  empresaNombre: 'Servicios TAMIKA 0302, C.A.',
+  empresaRif: 'J-50634330-4',
+  empresaDireccion: 'Carretera Vieja Caracas - Baruta, Torre Gamma, Piso 9, Apto 9-B, Residencia Los Alpes, Caracas - Venezuela.',
+  empresaTelefono: 'Telefono: +584142087167',
+  empresaWeb: 'www.serviciostamika.com',
+  proyecto: 'Implementación de servicios tecnológicos y soporte especializado',
+  saludo: 'Estimados señores:',
+};
 
 const parseVe = (str) => { if (!str && str !== 0) return 0; if (typeof str === 'number') return str; return parseFloat(str.toString().replace(/\./g, '').replace(',', '.')) || 0; };
 const formatUsd = (val) => currency(val, { symbol: '$', separator: '.', decimal: ',' }).format();
@@ -19,6 +31,14 @@ const DOCUMENTO_OPTIONS = [
 ];
 const ESTADO_DOCUMENTO_OPTIONS = ['BORRADOR', 'APROBADO', 'CONVERTIDO', 'FACTURADO', 'ANULADO'];
 const documentoLabel = (tipoDocumento) => (tipoDocumento === 'PRESUPUESTO' ? 'Presupuesto' : 'Propuesta');
+
+const datosPdfDesdeCliente = (cliente, base = {}, preferCliente = false) => ({
+  ...DEFAULT_PDF_DATA,
+  ...base,
+  clienteNombre: preferCliente ? (cliente?.nombre || base.clienteNombre || '') : (base.clienteNombre || cliente?.nombre || ''),
+  clienteRif: preferCliente ? (cliente?.rif || base.clienteRif || '') : (base.clienteRif || cliente?.rif || ''),
+  clienteDireccion: preferCliente ? (cliente?.direccion || base.clienteDireccion || '') : (base.clienteDireccion || cliente?.direccion || ''),
+});
 
 const getBase64ImageFromURL = (url) => {
   return new Promise((resolve) => {
@@ -58,6 +78,7 @@ export default function TamikaERP() {
   const [vigencia, setVigencia] = useState(DEFAULT_VIGENCIA);
   const [condiciones, setCondiciones] = useState(DEFAULT_TERMS);
   const [contenidoPropuesta, setContenidoPropuesta] = useState(DEFAULT_PROPUESTA_CONTENT);
+  const [datosPdf, setDatosPdf] = useState(DEFAULT_PDF_DATA);
 
   const [advMode, setAdvMode] = useState(true);
   const [defGan, setDefGan] = useState('0,30');
@@ -90,6 +111,16 @@ export default function TamikaERP() {
   const handleTipoDocumentoChange = (value) => {
     setTipoDocumento(value);
     cargarSiguienteCorrelativo(value);
+  };
+
+  const handleClienteChange = (clienteId) => {
+    setClienteSelect(clienteId);
+    const cliente = clientes.find((item) => item.id === clienteId);
+    setDatosPdf((prev) => datosPdfDesdeCliente(cliente, prev, true));
+  };
+
+  const updateDatosPdf = (field, value) => {
+    setDatosPdf((prev) => ({ ...prev, [field]: value }));
   };
 
   const cargarDatos = () => {
@@ -157,6 +188,7 @@ export default function TamikaERP() {
     setVigencia(DEFAULT_VIGENCIA);
     setCondiciones(DEFAULT_TERMS);
     setContenidoPropuesta(DEFAULT_PROPUESTA_CONTENT);
+    setDatosPdf(DEFAULT_PDF_DATA);
     setItemsCoti([]);
     cargarSiguienteCorrelativo('PROPUESTA');
   };
@@ -179,6 +211,7 @@ export default function TamikaERP() {
       vigencia,
       condiciones,
       contenidoPropuesta: tipoDocumento === 'PROPUESTA' ? contenidoPropuesta : null,
+      datosPdf,
       subtotal: calcularSubtotal(),
       iva: calcularIva(),
       total: calcularTotal(),
@@ -205,6 +238,7 @@ export default function TamikaERP() {
     setVigencia(coti.vigencia || DEFAULT_VIGENCIA);
     setCondiciones(coti.condiciones || DEFAULT_TERMS);
     setContenidoPropuesta(coti.contenidoPropuesta || DEFAULT_PROPUESTA_CONTENT);
+    setDatosPdf(datosPdfDesdeCliente(coti.cliente, coti.datosPdf || {}));
     setItemsCoti(Array.isArray(coti.items) ? coti.items : []);
     setShowModal(false);
   };
@@ -245,13 +279,26 @@ export default function TamikaERP() {
       const dateStr = ('0'+d.getDate()).slice(-2) + ('0'+(d.getMonth()+1)).slice(-2) + d.getFullYear();
       const aliasStr = c?.alias ? `_${c.alias}` : '';
       const cleanTitle = `${nombreDocumento}_${nroCoti || 'sin_correlativo'}${aliasStr}_${dateStr}.pdf`.replace(/\s+/g, '_');
+      const datosPdfActual = datosPdfDesdeCliente(c, datosPdf);
+      const sidebarCliente = [
+        datosPdfActual.clienteNombre,
+        datosPdfActual.clienteRif,
+        datosPdfActual.clienteDireccion,
+      ].filter(Boolean);
+      const sidebarEmpresa = [
+        datosPdfActual.empresaNombre,
+        datosPdfActual.empresaRif,
+        datosPdfActual.empresaDireccion,
+        datosPdfActual.empresaTelefono,
+        datosPdfActual.empresaWeb,
+      ].filter(Boolean);
 
       const tableBody = [
         [
-          { text: 'DESCRIPCIÓN', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 9, margin: [5, 6], border: [false, false, false, false] },
-          { text: 'CANT.', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 9, alignment: 'center', margin: [5, 6], border: [false, false, false, false] },
-          { text: 'PRECIO UNID.', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 9, alignment: 'right', margin: [5, 6], border: [false, false, false, false] },
-          { text: 'TOTAL USD', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 9, alignment: 'right', margin: [5, 6], border: [false, false, false, false] }
+          { text: 'DESCRIPCIÓN', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, margin: [4, 5], border: [false, false, false, false] },
+          { text: 'CANT.', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, alignment: 'center', margin: [4, 5], border: [false, false, false, false] },
+          { text: 'PRECIO UNID.', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, alignment: 'right', margin: [4, 5], border: [false, false, false, false] },
+          { text: 'TOTAL USD', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, alignment: 'right', margin: [4, 5], border: [false, false, false, false] }
         ]
       ];
 
@@ -259,26 +306,26 @@ export default function TamikaERP() {
         const pUnit = getPUnitario(item);
         const bg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
         tableBody.push([
-          { text: item.desc || ' ', fontSize: 9, color: '#1e293b', margin: [5, 8], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] },
-          { text: item.cant ? item.cant.toString() : '0', fontSize: 9, color: '#1e293b', alignment: 'center', margin: [5, 8], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] },
-          { text: formatUsd(pUnit), fontSize: 9, color: '#1e293b', alignment: 'right', margin: [5, 8], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] },
-          { text: formatUsd(pUnit * parseVe(item.cant)), fontSize: 9, bold: true, color: '#0f172a', alignment: 'right', margin: [5, 8], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] }
+          { text: item.desc || ' ', fontSize: 7.5, color: '#1e293b', margin: [4, 5], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] },
+          { text: item.cant ? item.cant.toString() : '0', fontSize: 7.5, color: '#1e293b', alignment: 'center', margin: [4, 5], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] },
+          { text: formatUsd(pUnit), fontSize: 7.5, color: '#1e293b', alignment: 'right', margin: [4, 5], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] },
+          { text: formatUsd(pUnit * parseVe(item.cant)), fontSize: 7.5, bold: true, color: '#0f172a', alignment: 'right', margin: [4, 5], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] }
         ]);
       });
 
       const terminosFormateados = htmlToPdfmake(condiciones, {
         window: window,
-        defaultStyles: { p: { fontSize: 8, color: '#475569', margin: [0, 0, 0, 5], alignment: 'justify' }, strong: { bold: true, color: '#0f172a' } }
+        defaultStyles: { p: { fontSize: 7, color: '#475569', margin: [0, 0, 0, 4], alignment: 'justify' }, strong: { bold: true, color: '#0f172a' } }
       });
       const contenidoPropuestaFormateado = tipoDocumento === 'PROPUESTA' && contenidoPropuesta?.trim()
         ? htmlToPdfmake(contenidoPropuesta, {
           window: window,
           defaultStyles: {
-            p: { fontSize: 9, color: '#334155', margin: [0, 0, 0, 7], alignment: 'justify', lineHeight: 1.18 },
+            p: { fontSize: 7.2, color: '#334155', margin: [0, 0, 0, 4], alignment: 'justify', lineHeight: 1.06 },
             strong: { bold: true, color: '#0f172a' },
-            ul: { margin: [12, 0, 0, 8] },
-            ol: { margin: [12, 0, 0, 8] },
-            li: { fontSize: 9, color: '#334155', margin: [0, 0, 0, 4] },
+            ul: { margin: [10, 0, 0, 4] },
+            ol: { margin: [10, 0, 0, 4] },
+            li: { fontSize: 7.2, color: '#334155', margin: [0, 0, 0, 2] },
           }
         })
         : [];
@@ -286,122 +333,78 @@ export default function TamikaERP() {
         ? contenidoPropuestaFormateado
         : [contenidoPropuestaFormateado];
 
-      // Estilo para las cajas con "cuerpo"
-      const cardStyle = { fillColor: '#ffffff', border: [true, true, true, true], borderColor: ['#cbd5e1', '#cbd5e1', '#cbd5e1', '#cbd5e1'] };
-      const cardHeaderStyle = { fillColor: '#f1f5f9', border: [true, true, true, false], borderColor: ['#cbd5e1', '#cbd5e1', '#cbd5e1', '#cbd5e1'] };
+      const transparentPixel = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+      const fechaPdf = d.toLocaleDateString('es-VE');
+      const sidebarLine = (text, index) => ({
+        text,
+        fontSize: index === 0 ? 6.5 : 6,
+        bold: index === 0,
+        color: '#444444',
+        margin: [0, index === 0 ? 0 : 4, 0, 0],
+        lineHeight: 1.05,
+      });
 
       const docDefinition = {
-        pageSize: 'LETTER',
-        pageMargins: [40, 115, 40, 60],
-
+        pageSize: 'A4',
+        pageMargins: [150, 136, 18, 28],
+        background: function(currentPage, pageSize) {
+          return [
+            {
+              canvas: [
+                { type: 'rect', x: 10, y: 15, w: 575, h: 112, color: '#d9d9d9' },
+                { type: 'rect', x: 10, y: 132, w: 130, h: 695, color: '#eeeeee' },
+              ]
+            },
+            { image: logoBase64 || transparentPixel, width: 66, absolutePosition: { x: 22, y: 31 } },
+            { text: 'Servicios\nTamika 0302,C.A', fontSize: 20, bold: true, color: '#333333', lineHeight: 0.84, absolutePosition: { x: 92, y: 35 } },
+            { text: 'RIF.: J-50634330-4', fontSize: 12, color: '#444444', absolutePosition: { x: 95, y: 92 } },
+            { text: nombreDocumento, fontSize: 23, bold: true, color: '#333333', alignment: 'right', absolutePosition: { x: 390, y: 50 }, width: 170 },
+            { text: `Fecha: ${fechaPdf}`, fontSize: 8, color: '#555555', alignment: 'right', absolutePosition: { x: 408, y: 88 }, width: 150 },
+            { text: `COTIZACIÓN NO. ${nroCoti || 'Pendiente'}`, fontSize: 8.5, bold: true, color: '#444444', alignment: 'right', absolutePosition: { x: 375, y: 112 }, width: 185 },
+            {
+              stack: [
+                { text: 'CLIENTE', fontSize: 6.8, bold: true, color: '#333333', margin: [0, 0, 0, 8] },
+                ...(sidebarCliente.length ? sidebarCliente.map(sidebarLine) : [sidebarLine('Consumidor Final', 0), sidebarLine('N/A', 1)]),
+              ],
+              absolutePosition: { x: 19, y: 158 },
+              width: 108,
+            },
+            {
+              stack: [
+                { text: 'EMPRESA', fontSize: 6.8, bold: true, color: '#333333', margin: [0, 0, 0, 8] },
+                ...sidebarEmpresa.map(sidebarLine),
+              ],
+              absolutePosition: { x: 19, y: 290 },
+              width: 108,
+            },
+            firmaUnificadaBase64
+              ? { image: firmaUnificadaBase64, width: 112, opacity: 0.78, absolutePosition: { x: 18, y: 662 } }
+              : { text: '', absolutePosition: { x: 18, y: 662 } },
+          ];
+        },
         header: function(currentPage, pageCount) {
-          return {
-            margin: [40, 30, 40, 0],
-            columns: [
-              {
-                width: 'auto',
-                // Logo reducido a 55px
-                image: logoBase64 || 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=',
-                width: 55,
-                margin: [0, 0, 0, 0]
-              },
-              {
-                width: '*',
-                stack: [
-                  // Texto aumentado de tamaño y movido 15px a la derecha
-                  { text: 'Servicios Tamika 0302, C.A.', fontSize: 17, bold: true, color: '#0f172a' },
-                  { text: 'RIF: J-50634330-4', fontSize: 11, bold: true, color: '#475569' }
-                ],
-                margin: [15, 10, 0, 0]
-              },
-              {
-                width: 150,
-                alignment: 'right',
-                stack: [
-                  { text: nombreDocumento.toUpperCase(), fontSize: 20, bold: true, color: '#94a3b8', characterSpacing: 2 },
-                  { text: `Fecha: ${d.toLocaleDateString('es-VE')}`, fontSize: 10, color: '#0f172a', margin: [0, 5, 0, 0] },
-                  { text: `Nro. ${nroCoti || 'Pendiente'}`, fontSize: 11, bold: true, color: '#0f172a' },
-                  { text: `(Pag ${currentPage}/${pageCount})`, fontSize: 9, bold: true, color: '#94a3b8', margin: [0, 2, 0, 0] }
-                ]
-              }
-            ]
-          };
+          return { text: `(${currentPage}/${pageCount})`, fontSize: 7, bold: true, color: '#444444', absolutePosition: { x: 560, y: 136 } };
         },
 
         content: [
-          {
-            columns: [
-              // CAJA CLIENTE CON CUERPO
-              {
-                width: '*',
-                table: {
-                  widths: ['*'],
-                  body: [
-                    [{ text: 'FACTURAR A:', fontSize: 8, bold: true, color: '#475569', margin: [10, 8], ...cardHeaderStyle }],
-                    [{
-                      stack: [
-                        { text: c?.nombre || 'Consumidor Final', fontSize: 11, bold: true, color: '#0f172a' },
-                        { text: `RIF: ${c?.rif || 'N/A'}`, fontSize: 9, color: '#475569', margin: [0, 4, 0, 4] },
-                        { text: c?.direccion || '', fontSize: 9, color: '#475569', lineHeight: 1.2 }
-                      ],
-                      margin: [10, 10], ...cardStyle
-                    }]
-                  ]
-                },
-                layout: 'noBorders'
-              },
-              { width: 25, text: '' },
-              // CAJA EMISOR CON CUERPO
-              {
-                width: '*',
-                table: {
-                  widths: ['*'],
-                  body: [
-                    [{ text: 'EMPRESA EMISORA:', fontSize: 8, bold: true, color: '#475569', margin: [10, 8], ...cardHeaderStyle }],
-                    [{
-                      stack: [
-                        { text: 'Servicios TAMIKA 0302, C.A.', fontSize: 10, bold: true, color: '#0f172a' },
-                        { text: 'RIF: J-50634330-4', fontSize: 9, color: '#475569', margin: [0, 4, 0, 4] },
-                        { text: 'Carretera Vieja Caracas - Baruta, Torre Gamma, Piso 9. Apto 9-B. Caracas - Venezuela.', fontSize: 9, color: '#475569', lineHeight: 1.2 },
-                        { text: 'Teléfono: +58 414-2087167', fontSize: 9, bold: true, color: '#0f172a', margin: [0, 4, 0, 2] },
-                        { text: 'www.serviciostamika.com', fontSize: 9, color: '#475569' }
-                      ],
-                      margin: [10, 10], ...cardStyle
-                    }]
-                  ]
-                },
-                layout: 'noBorders'
-              }
-            ],
-            margin: [0, 0, 0, 25]
-          },
-
-          tituloCoti ? { text: tituloCoti, alignment: 'center', bold: true, color: '#0f172a', fontSize: 12, margin: [0,0,0,15] } : null,
+          tituloCoti ? { text: tituloCoti, alignment: 'center', bold: true, color: '#1f2937', fontSize: 6.5, margin: [0, 0, 0, 2] } : null,
+          datosPdfActual.proyecto ? { text: [{ text: 'Proyecto: ', bold: true }, datosPdfActual.proyecto], alignment: 'center', color: '#334155', fontSize: 6.5, margin: [0, 0, 0, 10] } : null,
+          datosPdfActual.saludo ? { text: datosPdfActual.saludo, alignment: 'center', bold: true, color: '#1f2937', fontSize: 6.8, margin: [0, 0, 0, 5] } : null,
 
           ...(contenidoPropuestaStack.length ? [{
-            table: {
-              widths: ['*'],
-              body: [[{
-                stack: contenidoPropuestaStack,
-                fillColor: '#ffffff',
-                margin: [14, 12, 14, 8],
-                border: [true, true, true, true],
-                borderColor: ['#cbd5e1', '#cbd5e1', '#cbd5e1', '#cbd5e1']
-              }]]
-            },
-            layout: 'noBorders',
-            margin: [0, 0, 0, 18]
+            stack: contenidoPropuestaStack,
+            margin: [0, 0, 0, 10]
           }] : []),
 
           // TABLA DE ITEMS
           {
             table: {
               headerRows: 1,
-              widths: ['*', 40, 80, 90],
+              widths: ['*', 30, 58, 64],
               body: tableBody
             },
             layout: 'noBorders', // Los bordes se manejan a nivel de celda
-            margin: [0, 0, 0, 20]
+            margin: [0, 0, 0, 12]
           },
 
           // CUADRO DE TOTALES CON FONDO
@@ -409,39 +412,26 @@ export default function TamikaERP() {
             columns: [
               { width: '*', text: '' },
               {
-                width: 240,
+                width: 190,
                 table: {
                   widths: ['*', '*'],
                   body: [
-                    [{ text: 'SUBTOTAL USD', fontSize: 10, color: '#475569', margin: [12, 12, 0, 5] }, { text: formatUsd(calcularSubtotal()), fontSize: 10, bold: true, alignment: 'right', margin: [0, 12, 12, 5] }],
-                    [{ text: 'IVA (16%)', fontSize: 10, color: '#475569', margin: [12, 0, 0, 12] }, { text: formatUsd(calcularIva()), fontSize: 10, bold: true, alignment: 'right', margin: [0, 0, 12, 12] }],
-                    [{ text: 'TOTAL USD', fontSize: 15, bold: true, color: '#ffffff', fillColor: '#0f172a', margin: [12, 12, 0, 12] }, { text: formatUsd(calcularTotal()), fontSize: 15, bold: true, color: '#34d399', fillColor: '#0f172a', alignment: 'right', margin: [0, 12, 12, 12] }]
+                    [{ text: 'SUBTOTAL USD', fontSize: 7.5, color: '#475569', margin: [10, 9, 0, 4] }, { text: formatUsd(calcularSubtotal()), fontSize: 7.5, bold: true, alignment: 'right', margin: [0, 9, 10, 4] }],
+                    [{ text: 'IVA (16%)', fontSize: 7.5, color: '#475569', margin: [10, 0, 0, 9] }, { text: formatUsd(calcularIva()), fontSize: 7.5, bold: true, alignment: 'right', margin: [0, 0, 10, 9] }],
+                    [{ text: 'TOTAL USD', fontSize: 10, bold: true, color: '#ffffff', fillColor: '#0f172a', margin: [10, 9, 0, 9] }, { text: formatUsd(calcularTotal()), fontSize: 10, bold: true, color: '#34d399', fillColor: '#0f172a', alignment: 'right', margin: [0, 9, 10, 9] }]
                   ]
                 },
                 layout: {
                   fillColor: '#f8fafc', // Fondo gris claro para el bloque
                   hLineWidth: function (i, node) { return 0; }, vLineWidth: function (i, node) { return 0; }
                 },
-                margin: [0, 0, 0, 30] // Margen inferior para separar de términos
+                margin: [0, 0, 0, 18]
               }
             ]
           },
 
-          { text: 'TÉRMINOS Y CONDICIONES GENERALES', fontSize: 10, color: '#0f172a', bold: true, margin: [0, 0, 0, 10] },
+          { text: 'TÉRMINOS Y CONDICIONES GENERALES', fontSize: 7.5, color: '#0f172a', bold: true, margin: [0, 0, 0, 6] },
           ...terminosFormateados,
-
-          // ===============================================
-          // BLOQUE DE FIRMA UNIFICADA (SIN TEXTO DUPLICADO)
-          // ===============================================
-          {
-            unbreakable: true,
-            margin: [0, 40, 0, 0],
-            alignment: 'center',
-            stack: [
-              // SOLO LA IMAGEN, sin texto abajo
-              firmaUnificadaBase64 ? { image: firmaUnificadaBase64, width: 300, alignment: 'center' } : { text: '\n\n\n\n' }
-            ]
-          }
         ]
       };
 
@@ -534,7 +524,7 @@ export default function TamikaERP() {
              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12">
                 <div className="lg:col-span-4">
                   <label className="text-xs text-slate-500 font-bold uppercase">Cliente</label>
-                  <select value={clienteSelect} onChange={(e) => setClienteSelect(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
+                  <select value={clienteSelect} onChange={(e) => handleClienteChange(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
                     <option value="">-- Selecciona un Cliente --</option>
                     {clientes.map(cli => ( <option key={cli.id} value={cli.id}>{cli.nombre} ({cli.alias})</option> ))}
                   </select>
@@ -580,6 +570,52 @@ export default function TamikaERP() {
                    <div><label className="block text-xs font-bold text-indigo-700">Relación</label><input type="text" value={defRel} onChange={(e)=>handleGlobalChange('defRel', 'rel', e.target.value)} className="w-full border rounded px-3 py-2 bg-white" /></div>
                  </div>
                )}
+             </div>
+
+             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+               <h3 className="text-xs font-bold uppercase text-slate-500">Barra lateral del PDF</h3>
+               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                 <div>
+                   <label className="text-xs font-bold text-slate-500">Cliente</label>
+                   <input type="text" value={datosPdf.clienteNombre} onChange={(e)=>updateDatosPdf('clienteNombre', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
+                 </div>
+                 <div>
+                   <label className="text-xs font-bold text-slate-500">RIF cliente</label>
+                   <input type="text" value={datosPdf.clienteRif} onChange={(e)=>updateDatosPdf('clienteRif', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
+                 </div>
+                 <div className="md:col-span-2">
+                   <label className="text-xs font-bold text-slate-500">Dirección cliente</label>
+                   <textarea value={datosPdf.clienteDireccion} onChange={(e)=>updateDatosPdf('clienteDireccion', e.target.value)} rows={2} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none resize-y" />
+                 </div>
+                 <div>
+                   <label className="text-xs font-bold text-slate-500">Empresa</label>
+                   <input type="text" value={datosPdf.empresaNombre} onChange={(e)=>updateDatosPdf('empresaNombre', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
+                 </div>
+                 <div>
+                   <label className="text-xs font-bold text-slate-500">RIF empresa</label>
+                   <input type="text" value={datosPdf.empresaRif} onChange={(e)=>updateDatosPdf('empresaRif', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
+                 </div>
+                 <div>
+                   <label className="text-xs font-bold text-slate-500">Teléfono</label>
+                   <input type="text" value={datosPdf.empresaTelefono} onChange={(e)=>updateDatosPdf('empresaTelefono', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
+                 </div>
+                 <div>
+                   <label className="text-xs font-bold text-slate-500">Web</label>
+                   <input type="text" value={datosPdf.empresaWeb} onChange={(e)=>updateDatosPdf('empresaWeb', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
+                 </div>
+                 <div className="md:col-span-2">
+                   <label className="text-xs font-bold text-slate-500">Dirección empresa</label>
+                   <textarea value={datosPdf.empresaDireccion} onChange={(e)=>updateDatosPdf('empresaDireccion', e.target.value)} rows={2} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none resize-y" />
+                 </div>
+                 <div className="md:col-span-2">
+                   <label className="text-xs font-bold text-slate-500">Proyecto</label>
+                   <textarea value={datosPdf.proyecto} onChange={(e)=>updateDatosPdf('proyecto', e.target.value)} rows={2} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none resize-y" />
+                 </div>
+                 <div className="md:col-span-2 xl:col-span-4">
+                   <label className="text-xs font-bold text-slate-500">Saludo / destinatario</label>
+                   <input type="text" value={datosPdf.saludo} onChange={(e)=>updateDatosPdf('saludo', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
+                 </div>
+               </div>
              </div>
 
              {tipoDocumento === 'PROPUESTA' && (

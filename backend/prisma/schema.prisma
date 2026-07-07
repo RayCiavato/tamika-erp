@@ -51,6 +51,7 @@ model Cotizacion {
   items              Json
   titulo             String?
   contenidoPropuesta String?
+  datosPdf           Json?
   estado             String        @default("BORRADOR")
   deletedAt          DateTime?
 }

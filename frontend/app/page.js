@@ -488,6 +488,9 @@ export default function TamikaERP() {
         layout: 'noBorders',
         absolutePosition: { x: 18, y },
       });
+      const headerRightX = 270;
+      const headerRightWidth = 285;
+      const headerTitleFont = nombreDocumento.length > 10 ? 20 : 21;
 
       const docDefinition = {
         pageSize: 'A4',
@@ -503,9 +506,9 @@ export default function TamikaERP() {
             { image: logoBase64 || transparentPixel, width: 66, absolutePosition: { x: 22, y: 31 } },
             { text: 'Servicios\nTamika 0302,C.A', fontSize: 20, bold: true, color: '#333333', lineHeight: 0.84, absolutePosition: { x: 92, y: 35 } },
             { text: 'RIF.: J-50634330-4', fontSize: 12, color: '#444444', absolutePosition: { x: 95, y: 92 } },
-            { text: nombreDocumento, fontSize: 22, bold: true, color: '#333333', alignment: 'right', absolutePosition: { x: 315, y: 50 }, width: 245 },
-            { text: `Fecha: ${fechaPdf}`, fontSize: 8, color: '#555555', alignment: 'right', absolutePosition: { x: 315, y: 88 }, width: 245 },
-            { text: etiquetaNumeroPdf, fontSize: 8.2, bold: true, color: '#444444', alignment: 'right', absolutePosition: { x: 315, y: 112 }, width: 245 },
+            { text: nombreDocumento, fontSize: headerTitleFont, bold: true, color: '#333333', alignment: 'right', absolutePosition: { x: headerRightX, y: 50 }, width: headerRightWidth },
+            { text: `Fecha: ${fechaPdf}`, fontSize: 7.6, color: '#555555', alignment: 'right', absolutePosition: { x: headerRightX, y: 88 }, width: headerRightWidth },
+            { text: etiquetaNumeroPdf, fontSize: 7.8, bold: true, color: '#444444', alignment: 'right', absolutePosition: { x: headerRightX, y: 112 }, width: headerRightWidth },
             sidebarSection('CLIENTE', sidebarCliente, 158),
             sidebarSection('EMPRESA', sidebarEmpresa, 326),
             logoBase64

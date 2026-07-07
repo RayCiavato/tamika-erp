@@ -24,12 +24,23 @@ const estadoStyles = {
   ANULADO: 'bg-slate-200 text-slate-700',
 };
 
+const tasaFuenteLabel = {
+  BCV_API: 'Tasa actual cargada automáticamente',
+  CACHE: 'Tasa cacheada',
+  FALLBACK: 'Tasa de respaldo',
+  MANUAL: 'Tasa modificada manualmente',
+  NO_DISPONIBLE: 'Tasa no disponible',
+};
+
 const emptyForm = () => ({
   tipo: 'INGRESO',
   concepto: '',
   descripcion: '',
   montoUsd: '',
   tasaBcv: '',
+  tasaFuente: 'NO_DISPONIBLE',
+  tasaFecha: '',
+  tasaEditadaManual: false,
   fechaMovimiento: new Date().toISOString().slice(0, 10),
   fechaVencimiento: '',
   estado: 'PAGADO',
@@ -39,6 +50,7 @@ const emptyForm = () => ({
 });
 
 const formatUsd = (value) => currency(value || 0, { symbol: '$', separator: '.', decimal: ',' }).format();
+const formatBs = (value) => currency(value || 0, { symbol: 'Bs ', separator: '.', decimal: ',' }).format();
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString('es-VE', { timeZone: 'UTC' }) : '-');
 const toDateInput = (value) => (value ? new Date(value).toISOString().slice(0, 10) : '');
 
@@ -49,6 +61,8 @@ export default function ContabilidadView({ clientes = [], onChanged }) {
   const [mensaje, setMensaje] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [loadingTasa, setLoadingTasa] = useState(false);
+  const [tasaMensaje, setTasaMensaje] = useState('');
   const [filters, setFilters] = useState({ tipo: '', estado: '', buscar: '', desde: '', hasta: '' });
 
   const montoBsCalculado = useMemo(() => {
@@ -78,9 +92,49 @@ export default function ContabilidadView({ clientes = [], onChanged }) {
     }
   };
 
+  const cargarTasaBcv = async ({ skipConfirm = false } = {}) => {
+    if (form.tasaEditadaManual && !skipConfirm) {
+      const reemplazar = confirm('Ya modificaste la tasa manualmente. ¿Deseas reemplazarla por la tasa actual?');
+      if (!reemplazar) return;
+    }
+
+    setLoadingTasa(true);
+    setTasaMensaje('');
+
+    try {
+      const res = await fetch('/api/tasas/bcv');
+      const data = await res.json();
+
+      if (!data.success || !data.tasa) {
+        throw new Error(data.message || 'No se pudo obtener la tasa actual. Puedes ingresarla manualmente.');
+      }
+
+      setForm((prev) => ({
+        ...prev,
+        tasaBcv: data.tasa.toString(),
+        tasaFuente: data.fuente || 'BCV_API',
+        tasaFecha: data.fecha || '',
+        tasaEditadaManual: false,
+      }));
+      setTasaMensaje(tasaFuenteLabel[data.fuente] || tasaFuenteLabel.BCV_API);
+    } catch (error) {
+      setForm((prev) => ({
+        ...prev,
+        tasaFuente: prev.tasaBcv ? 'MANUAL' : 'NO_DISPONIBLE',
+      }));
+      setTasaMensaje(error.message || 'No se pudo obtener la tasa actual. Puedes ingresarla manualmente.');
+    } finally {
+      setLoadingTasa(false);
+    }
+  };
+
   useEffect(() => {
     cargarMovimientos();
   }, [filters.tipo, filters.estado, filters.desde, filters.hasta]);
+
+  useEffect(() => {
+    cargarTasaBcv({ skipConfirm: true });
+  }, []);
 
   const handleFilterSearch = (event) => {
     event.preventDefault();
@@ -88,6 +142,15 @@ export default function ContabilidadView({ clientes = [], onChanged }) {
   };
 
   const updateForm = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+  const updateTasaManual = (value) => {
+    setForm((prev) => ({
+      ...prev,
+      tasaBcv: value,
+      tasaFuente: value ? 'MANUAL' : 'NO_DISPONIBLE',
+      tasaEditadaManual: true,
+    }));
+    setTasaMensaje(value ? tasaFuenteLabel.MANUAL : 'Puedes ingresar la tasa manualmente.');
+  };
   const updateTipo = (value) => {
     setForm((prev) => ({
       ...prev,
@@ -100,6 +163,7 @@ export default function ContabilidadView({ clientes = [], onChanged }) {
   const resetForm = () => {
     setEditingId(null);
     setForm(emptyForm());
+    cargarTasaBcv({ skipConfirm: true });
   };
 
   const guardarMovimiento = async (event) => {
@@ -109,6 +173,9 @@ export default function ContabilidadView({ clientes = [], onChanged }) {
     const payload = {
       ...form,
       montoBs: montoBsCalculado > 0 ? montoBsCalculado : undefined,
+      tasaEditadaManual: Boolean(form.tasaEditadaManual),
+      tasaFuente: form.tasaFuente === 'NO_DISPONIBLE' ? null : form.tasaFuente,
+      tasaFecha: form.tasaFecha || null,
       clienteId: form.clienteId || null,
       fechaVencimiento: form.fechaVencimiento || null,
     };
@@ -138,6 +205,9 @@ export default function ContabilidadView({ clientes = [], onChanged }) {
       descripcion: mov.descripcion || '',
       montoUsd: mov.montoUsd?.toString() || '',
       tasaBcv: mov.tasaBcv?.toString() || '',
+      tasaFuente: mov.tasaFuente || (mov.tasaBcv ? 'MANUAL' : 'NO_DISPONIBLE'),
+      tasaFecha: mov.tasaFecha || '',
+      tasaEditadaManual: Boolean(mov.tasaEditadaManual),
       fechaMovimiento: toDateInput(mov.fechaMovimiento),
       fechaVencimiento: toDateInput(mov.fechaVencimiento),
       estado: mov.estado,
@@ -145,6 +215,7 @@ export default function ContabilidadView({ clientes = [], onChanged }) {
       proveedorId: mov.proveedorId || '',
       referencia: mov.referencia || '',
     });
+    setTasaMensaje(tasaFuenteLabel[mov.tasaFuente] || (mov.tasaBcv ? 'Tasa guardada en el movimiento.' : ''));
   };
 
   const cambiarEstado = async (mov, estado) => {
@@ -181,7 +252,7 @@ export default function ContabilidadView({ clientes = [], onChanged }) {
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
           <h2 className="text-2xl font-bold text-slate-950">Contabilidad</h2>
-          <p className="text-sm text-slate-500">Gestion de ingresos, egresos y cuentas pendientes.</p>
+          <p className="text-sm text-slate-500">Gestión de ingresos, egresos y cuentas pendientes.</p>
         </div>
         <button onClick={resetForm} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow hover:bg-slate-800">Nuevo movimiento</button>
       </div>
@@ -217,17 +288,26 @@ export default function ContabilidadView({ clientes = [], onChanged }) {
             <Field label="Concepto" className="col-span-2">
               <input required value={form.concepto} onChange={(e) => updateForm('concepto', e.target.value)} className="input" />
             </Field>
-            <Field label="Descripcion" className="col-span-2">
+            <Field label="Descripción" className="col-span-2">
               <textarea value={form.descripcion} onChange={(e) => updateForm('descripcion', e.target.value)} rows={3} className="input resize-y" />
             </Field>
             <Field label="Monto USD">
               <input required type="number" min="0" step="0.01" value={form.montoUsd} onChange={(e) => updateForm('montoUsd', e.target.value)} className="input" />
             </Field>
-            <Field label="Tasa BCV">
-              <input type="number" min="0" step="0.01" value={form.tasaBcv} onChange={(e) => updateForm('tasaBcv', e.target.value)} className="input" />
-            </Field>
+            <div className="text-xs font-bold text-slate-500">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span>Tasa BCV</span>
+                <button type="button" onClick={() => cargarTasaBcv()} disabled={loadingTasa} className="rounded-md bg-indigo-50 px-2 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60">
+                  {loadingTasa ? 'Consultando...' : 'Actualizar tasa BCV'}
+                </button>
+              </div>
+              <input type="number" min="0" step="0.01" value={form.tasaBcv} onChange={(e) => updateTasaManual(e.target.value)} className="input" />
+              <p className={`mt-1 text-[11px] ${form.tasaFuente === 'MANUAL' ? 'text-amber-700' : form.tasaFuente === 'NO_DISPONIBLE' ? 'text-red-600' : 'text-emerald-700'}`}>
+                {loadingTasa ? 'Consultando tasa actual...' : tasaMensaje || tasaFuenteLabel[form.tasaFuente] || tasaFuenteLabel.NO_DISPONIBLE}
+              </p>
+            </div>
             <Field label="Monto Bs calculado" className="col-span-2">
-              <input readOnly value={montoBsCalculado > 0 ? currency(montoBsCalculado, { symbol: 'Bs ', separator: '.', decimal: ',' }).format() : '-'} className="input bg-slate-100 font-bold text-slate-600" />
+              <input readOnly value={montoBsCalculado > 0 ? formatBs(montoBsCalculado) : '-'} className="input bg-slate-100 font-bold text-slate-600" />
             </Field>
             <Field label="Fecha movimiento">
               <input required type="date" value={form.fechaMovimiento} onChange={(e) => updateForm('fechaMovimiento', e.target.value)} className="input" />
@@ -296,7 +376,10 @@ export default function ContabilidadView({ clientes = [], onChanged }) {
                     </td>
                     <td className="p-3 text-slate-600">{mov.cliente?.nombre || mov.referencia || mov.proveedorId || '-'}</td>
                     <td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${estadoStyles[mov.estado] || 'bg-slate-100 text-slate-700'}`}>{mov.estado}</span></td>
-                    <td className="p-3 text-right font-extrabold">{formatUsd(mov.montoUsd)}</td>
+                    <td className="p-3 text-right">
+                      <p className="font-extrabold">{formatUsd(mov.montoUsd)}</p>
+                      {mov.montoBs ? <p className="text-xs font-semibold text-slate-500">{formatBs(mov.montoBs)}</p> : null}
+                    </td>
                     <td className="p-3">
                       <div className="flex justify-end gap-2">
                         <button type="button" onClick={() => editarMovimiento(mov)} className="text-xs font-bold text-blue-600">Editar</button>

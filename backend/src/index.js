@@ -5,12 +5,20 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const app = express();
 const port = process.env.PORT || 5000;
+const readPositiveNumber = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
 
 const MOVIMIENTO_TIPOS = ['INGRESO', 'EGRESO', 'CUENTA_POR_COBRAR', 'CUENTA_POR_PAGAR'];
 const MOVIMIENTO_ESTADOS = ['PENDIENTE', 'PAGADO', 'VENCIDO', 'ANULADO'];
 const PENDIENTE_ESTADOS = ['PENDIENTE', 'VENCIDO'];
 const DOCUMENTO_TIPOS = ['PROPUESTA', 'PRESUPUESTO'];
 const DOCUMENTO_ESTADOS = ['BORRADOR', 'APROBADO', 'CONVERTIDO', 'FACTURADO', 'ANULADO'];
+const TASA_FUENTES = ['BCV_API', 'MANUAL', 'CACHE', 'FALLBACK'];
+const BCV_API_TIMEOUT_MS = readPositiveNumber(process.env.BCV_API_TIMEOUT_MS, 5000);
+const BCV_API_CACHE_TTL_SECONDS = readPositiveNumber(process.env.BCV_API_CACHE_TTL_SECONDS, 3600);
+let bcvCache = null;
 
 app.use(cors());
 app.use(express.json());
@@ -29,6 +37,152 @@ const parseDate = (value) => {
 
 const serializeError = (res, status, message, details) => {
   res.status(status).json({ error: message, details });
+};
+
+const parseApiNumber = (value) => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
+  if (typeof value !== 'string') return NaN;
+
+  const clean = value.trim().replace(/[^\d,.-]/g, '');
+  if (!clean) return NaN;
+
+  const normalized = clean.includes(',')
+    ? clean.replace(/\./g, '').replace(',', '.')
+    : clean;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : NaN;
+};
+
+const extractPreferredNumber = (payload) => {
+  const preferredKeys = ['tasa', 'bcv', 'promedio', 'valor', 'rate', 'precio', 'price'];
+
+  const scan = (value) => {
+    if (!value || typeof value !== 'object') return NaN;
+
+    for (const key of Object.keys(value)) {
+      const normalizedKey = key.toLowerCase();
+      if (preferredKeys.some((candidate) => normalizedKey.includes(candidate))) {
+        const parsed = parseApiNumber(value[key]);
+        if (parsed > 0) return parsed;
+      }
+    }
+
+    for (const key of Object.keys(value)) {
+      const nested = value[key];
+      if (nested && typeof nested === 'object') {
+        const parsed = scan(nested);
+        if (parsed > 0) return parsed;
+      }
+    }
+
+    return NaN;
+  };
+
+  return scan(payload);
+};
+
+const extractPreferredDate = (payload) => {
+  const preferredKeys = ['fecha', 'date', 'actualizacion', 'updated'];
+
+  const scan = (value) => {
+    if (!value || typeof value !== 'object') return null;
+
+    for (const key of Object.keys(value)) {
+      const normalizedKey = key.toLowerCase();
+      if (preferredKeys.some((candidate) => normalizedKey.includes(candidate))) {
+        const parsed = parseDate(value[key]);
+        if (parsed) return parsed;
+      }
+    }
+
+    for (const key of Object.keys(value)) {
+      const nested = value[key];
+      if (nested && typeof nested === 'object') {
+        const parsed = scan(nested);
+        if (parsed) return parsed;
+      }
+    }
+
+    return null;
+  };
+
+  return scan(payload);
+};
+
+const fallbackTasaGuardada = async () => {
+  const tasa = await prisma.tasa.findFirst({ orderBy: { fecha: 'desc' } });
+  if (!tasa || !Number.isFinite(Number(tasa.bcv)) || Number(tasa.bcv) <= 0) return null;
+
+  return {
+    success: true,
+    tasa: Number(tasa.bcv),
+    moneda: 'USD',
+    fuente: 'FALLBACK',
+    fecha: tasa.fecha,
+    cache: false,
+    message: 'Se uso la ultima tasa guardada porque no se pudo obtener la tasa BCV actual.',
+  };
+};
+
+const consultarTasaBcv = async () => {
+  const now = Date.now();
+  if (bcvCache && bcvCache.expiresAt > now) {
+    return {
+      ...bcvCache.data,
+      fuente: 'CACHE',
+      cache: true,
+    };
+  }
+
+  const url = process.env.BCV_API_URL;
+  if (!url) {
+    const fallback = await fallbackTasaGuardada();
+    if (fallback) return fallback;
+
+    return {
+      success: false,
+      message: 'No se pudo obtener la tasa BCV actual. Ingrese la tasa manualmente.',
+    };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), BCV_API_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error('Respuesta invalida de la API BCV.');
+
+    const payload = await response.json();
+    const tasa = extractPreferredNumber(payload);
+    if (!Number.isFinite(tasa) || tasa <= 0) throw new Error('Tasa BCV invalida.');
+
+    const fecha = extractPreferredDate(payload) || new Date();
+    const data = {
+      success: true,
+      tasa: Number(tasa.toFixed(4)),
+      moneda: 'USD',
+      fuente: 'BCV_API',
+      fecha,
+      cache: false,
+    };
+
+    bcvCache = {
+      data,
+      expiresAt: now + Math.max(BCV_API_CACHE_TTL_SECONDS, 0) * 1000,
+    };
+
+    return data;
+  } catch (error) {
+    const fallback = await fallbackTasaGuardada();
+    if (fallback) return fallback;
+
+    return {
+      success: false,
+      message: 'No se pudo obtener la tasa BCV actual. Ingrese la tasa manualmente.',
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 };
 
 const prefijoDocumento = (tipoDocumento) => (tipoDocumento === 'PRESUPUESTO' ? 'PRES' : 'PROP');
@@ -93,28 +247,47 @@ const normalizeCotizacionPayload = (body) => {
   };
 };
 
-const normalizeMovimientoPayload = (body) => {
+const normalizeMovimientoPayload = async (body) => {
   const errors = [];
   const tipo = body.tipo;
   const estado = body.estado || 'PENDIENTE';
   const montoUsd = toNumber(body.montoUsd);
-  const tasaBcv = toNumber(body.tasaBcv);
+  let tasaBcv = toNumber(body.tasaBcv);
   const montoBsInput = toNumber(body.montoBs);
   const fechaMovimiento = parseDate(body.fechaMovimiento);
   const fechaVencimiento = parseDate(body.fechaVencimiento);
+  let tasaFecha = parseDate(body.tasaFecha);
+  const tasaEditadaManual = body.tasaEditadaManual === true || body.tasaEditadaManual === 'true';
+  let tasaFuente = body.tasaFuente?.toString().trim() || null;
+  const tieneTasaInput = body.tasaBcv !== undefined && body.tasaBcv !== null && body.tasaBcv !== '';
 
   if (!MOVIMIENTO_TIPOS.includes(tipo)) errors.push('tipo debe ser valido.');
   if (!body.concepto || !body.concepto.toString().trim()) errors.push('concepto es obligatorio.');
   if (Number.isNaN(montoUsd) || montoUsd === null || montoUsd < 0) errors.push('montoUsd debe ser numerico y mayor o igual a 0.');
   if (!MOVIMIENTO_ESTADOS.includes(estado)) errors.push('estado debe ser valido.');
   if (!fechaMovimiento) errors.push('fechaMovimiento es obligatoria y debe ser valida.');
-  if (body.tasaBcv !== undefined && body.tasaBcv !== null && body.tasaBcv !== '' && (Number.isNaN(tasaBcv) || tasaBcv < 0)) errors.push('tasaBcv debe ser numerica y mayor o igual a 0.');
+  if (tieneTasaInput && (Number.isNaN(tasaBcv) || tasaBcv <= 0)) errors.push('tasaBcv debe ser numerica y mayor que 0.');
   if (body.fechaVencimiento && !fechaVencimiento) errors.push('fechaVencimiento debe ser valida.');
   if (body.montoBs !== undefined && body.montoBs !== null && body.montoBs !== '' && (Number.isNaN(montoBsInput) || montoBsInput < 0)) errors.push('montoBs debe ser numerico y mayor o igual a 0.');
+  if (tasaFuente && !TASA_FUENTES.includes(tasaFuente)) errors.push('tasaFuente debe ser valida.');
 
   if (errors.length) return { errors };
 
-  const montoBs = tasaBcv !== null && tasaBcv > 0 ? Number((montoUsd * tasaBcv).toFixed(2)) : montoBsInput;
+  if (!tieneTasaInput) {
+    const tasaActual = await consultarTasaBcv();
+    if (tasaActual.success) {
+      tasaBcv = tasaActual.tasa;
+      tasaFuente = tasaActual.fuente;
+      tasaFecha = parseDate(tasaActual.fecha) || new Date();
+    }
+  }
+
+  if (tasaEditadaManual) tasaFuente = 'MANUAL';
+  if (tasaBcv !== null && !Number.isNaN(tasaBcv) && tasaBcv > 0 && !tasaFuente) tasaFuente = 'BCV_API';
+
+  const montoBs = tasaBcv !== null && !Number.isNaN(tasaBcv) && tasaBcv > 0
+    ? Number((montoUsd * tasaBcv).toFixed(2))
+    : (montoBsInput === null || Number.isNaN(montoBsInput) ? null : montoBsInput);
 
   return {
     data: {
@@ -124,6 +297,9 @@ const normalizeMovimientoPayload = (body) => {
       montoUsd,
       tasaBcv: tasaBcv === null || Number.isNaN(tasaBcv) ? null : tasaBcv,
       montoBs: montoBs === null || Number.isNaN(montoBs) ? null : montoBs,
+      tasaFuente,
+      tasaFecha,
+      tasaEditadaManual,
       fechaMovimiento,
       fechaVencimiento,
       estado,
@@ -392,6 +568,17 @@ app.put('/api/cotizaciones/:id', actualizarCotizacion);
 app.delete('/api/cotizaciones/:id', eliminarCotizacion);
 
 // TASAS
+app.get('/api/tasas/bcv', async (req, res) => {
+  try {
+    res.json(await consultarTasaBcv());
+  } catch (error) {
+    res.json({
+      success: false,
+      message: 'No se pudo obtener la tasa BCV actual. Ingrese la tasa manualmente.',
+    });
+  }
+});
+
 app.get('/api/tasas', async (req, res) => {
   try {
     res.json(await prisma.tasa.findFirst({ orderBy: { fecha: 'desc' } }) || { bcv: 0, paralelo: 0 });
@@ -479,7 +666,7 @@ app.get('/api/contabilidad/:id', async (req, res) => {
 
 app.post('/api/contabilidad', async (req, res) => {
   try {
-    const normalized = normalizeMovimientoPayload(req.body);
+    const normalized = await normalizeMovimientoPayload(req.body);
     if (normalized.errors) return serializeError(res, 400, 'Datos invalidos.', normalized.errors);
 
     const movimiento = await prisma.movimientoContable.create({
@@ -503,8 +690,18 @@ app.put('/api/contabilidad/:id', async (req, res) => {
       ...req.body,
       fechaMovimiento: req.body.fechaMovimiento || actual.fechaMovimiento,
       fechaVencimiento: req.body.fechaVencimiento === undefined ? actual.fechaVencimiento : req.body.fechaVencimiento,
+      tasaFecha: req.body.tasaFecha === undefined ? actual.tasaFecha : req.body.tasaFecha,
     };
-    const normalized = normalizeMovimientoPayload(merged);
+
+    if (
+      req.body.tasaBcv !== undefined &&
+      req.body.tasaEditadaManual === undefined &&
+      toNumber(req.body.tasaBcv) !== toNumber(actual.tasaBcv)
+    ) {
+      merged.tasaEditadaManual = true;
+    }
+
+    const normalized = await normalizeMovimientoPayload(merged);
     if (normalized.errors) return serializeError(res, 400, 'Datos invalidos.', normalized.errors);
 
     const movimiento = await prisma.movimientoContable.update({

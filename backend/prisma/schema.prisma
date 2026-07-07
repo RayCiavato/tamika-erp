@@ -76,20 +76,23 @@ enum MovimientoEstado {
 }
 
 model MovimientoContable {
-  id               String           @id @default(uuid())
-  tipo             MovimientoTipo
-  concepto         String
-  descripcion      String?
-  montoUsd         Float
-  tasaBcv          Float?
-  montoBs          Float?
-  fechaMovimiento  DateTime
-  fechaVencimiento DateTime?
-  estado           MovimientoEstado @default(PENDIENTE)
-  clienteId        String?
-  cliente          Cliente?         @relation(fields: [clienteId], references: [id])
-  proveedorId      String?
-  referencia       String?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  id                String           @id @default(uuid())
+  tipo              MovimientoTipo
+  concepto          String
+  descripcion       String?
+  montoUsd          Float
+  tasaBcv           Float?
+  montoBs           Float?
+  tasaFuente        String?
+  tasaFecha         DateTime?
+  tasaEditadaManual Boolean          @default(false)
+  fechaMovimiento   DateTime
+  fechaVencimiento  DateTime?
+  estado            MovimientoEstado @default(PENDIENTE)
+  clienteId         String?
+  cliente           Cliente?         @relation(fields: [clienteId], references: [id])
+  proveedorId       String?
+  referencia        String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 }

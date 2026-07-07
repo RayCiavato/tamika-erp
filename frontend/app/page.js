@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useState, useEffect } from 'react';
 import currency from 'currency.js';
 import dynamic from 'next/dynamic';
@@ -7,8 +7,8 @@ import ContabilidadView from './components/ContabilidadView';
 const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
 import 'react-quill-new/dist/quill.snow.css';
 
-const DEFAULT_TERMS = `<p>Los servicios se rigen por los lineamientos de ISO/IEC 27001, NIST CSF.</p><br/><p><strong>Precios:</strong> Los precios estÃ¡n expresados en USD (DÃ³lares) e incluyen el Impuesto al Valor Agregado (IVA), salvo que se indique lo contrario.</p><p><strong>Validez:</strong> Los precios son vÃ¡lidos Ãºnicamente para este cliente y negociaciÃ³n en particular.</p><p><strong>Financiamiento:</strong> OpciÃ³n de pago en 3 cuotas mensuales (50% inicial y 2 cuotas de 25%) en bolÃ­vares, calculadas al tipo de cambio oficial del Banco Central de Venezuela (BCV) vigente en la fecha de cada pago.</p><p><strong>Variaciones de Precio:</strong> El precio de todos los productos que componen esta propuesta estÃ¡ sujeto a variaciÃ³n sin previo aviso, segÃºn las condiciones actuales del mercado.</p><p><strong>AprobaciÃ³n:</strong> La aprobaciÃ³n debe ser enviada vÃ­a correo electrÃ³nico.</p><p><strong>Validez de la Oferta:</strong> Esta oferta tiene una validez de 07 dÃ­as hÃ¡biles.</p><p><strong>Confidencialidad:</strong> La informaciÃ³n relacionada con esta propuesta es absolutamente confidencial y para uso exclusivo de la empresa a quien va dirigida, quien se compromete a mantener y respetar la confidencialidad de la informaciÃ³n.</p><p><strong>Recursos Humanos:</strong> La empresa que recibe la cotizaciÃ³n se compromete a no efectuar ofrecimiento alguno de tipo laboral al personal asignado al servicio solicitado durante el desarrollo de este, y hasta por tres (3) aÃ±os contados a partir de la fecha de culminaciÃ³n.</p><p><strong>Costo de Infraestructura:</strong> El costo de infraestructura necesario para la implementaciÃ³n y funcionamiento del sistema correrÃ¡ por cuenta del cliente.</p><p><strong>GarantÃ­a de Servicio:</strong> Cualquier garantÃ­a de servicio se especificarÃ¡ en un acuerdo por separado y estarÃ¡ sujeta a los tÃ©rminos y condiciones acordados.</p><p><strong>Soporte TÃ©cnico:</strong> El soporte tÃ©cnico serÃ¡ proporcionado segÃºn los tÃ©rminos especificados en la propuesta y no incluye soporte adicional fuera del alcance definido sin un costo adicional.</p><p><strong>Modificaciones:</strong> Cualquier modificaciÃ³n a los tÃ©rminos de esta propuesta deberÃ¡ ser acordada por ambas partes y documentada formalmente.</p><p><strong>Inicio de Labores:</strong> No se iniciarÃ¡ labores de ningÃºn tipo sin la respectiva Orden de Servicio y/o anticipo de EL CLIENTE.</p><p><strong>Impacto de Disposiciones Gubernamentales:</strong> Cualesquiera disposiciones de Ã­ndole gubernamental cuyo impacto incida de manera directa en el estipendio de Servicios TAMIKA 0302, C.A. serÃ¡ considerado motivo para evaluar, conjuntamente, reajustes en las tarifas o cambios en los tÃ©rminos comerciales.</p><p><strong>Servicios Incluidos:</strong> Esta Oferta no incluye otros servicios o especialidades distintas a las expresamente seÃ±aladas.</p>`;
-const DEFAULT_VIGENCIA = '15 dias habiles';
+const DEFAULT_TERMS = `<p>Los servicios se rigen por los lineamientos de ISO/IEC 27001, NIST CSF.</p><br/><p><strong>Precios:</strong> Los precios est&aacute;n expresados en USD (D&oacute;lares) e incluyen el Impuesto al Valor Agregado (IVA), salvo que se indique lo contrario.</p><p><strong>Validez:</strong> Los precios son v&aacute;lidos &uacute;nicamente para este cliente y negociaci&oacute;n en particular.</p><p><strong>Financiamiento:</strong> Opci&oacute;n de pago en 3 cuotas mensuales (50% inicial y 2 cuotas de 25%) en bol&iacute;vares, calculadas al tipo de cambio oficial del Banco Central de Venezuela (BCV) vigente en la fecha de cada pago.</p><p><strong>Variaciones de Precio:</strong> El precio de todos los productos que componen esta propuesta est&aacute; sujeto a variaci&oacute;n sin previo aviso, seg&uacute;n las condiciones actuales del mercado.</p><p><strong>Aprobaci&oacute;n:</strong> La aprobaci&oacute;n debe ser enviada v&iacute;a correo electr&oacute;nico.</p><p><strong>Validez de la Oferta:</strong> Esta oferta tiene una validez de 07 d&iacute;as h&aacute;biles.</p><p><strong>Confidencialidad:</strong> La informaci&oacute;n relacionada con esta propuesta es absolutamente confidencial y para uso exclusivo de la empresa a quien va dirigida, quien se compromete a mantener y respetar la confidencialidad de la informaci&oacute;n.</p><p><strong>Recursos Humanos:</strong> La empresa que recibe la cotizaci&oacute;n se compromete a no efectuar ofrecimiento alguno de tipo laboral al personal asignado al servicio solicitado durante el desarrollo de este, y hasta por tres (3) a&ntilde;os contados a partir de la fecha de culminaci&oacute;n.</p><p><strong>Costo de Infraestructura:</strong> El costo de infraestructura necesario para la implementaci&oacute;n y funcionamiento del sistema correr&aacute; por cuenta del cliente.</p><p><strong>Garant&iacute;a de Servicio:</strong> Cualquier garant&iacute;a de servicio se especificar&aacute; en un acuerdo por separado y estar&aacute; sujeta a los t&eacute;rminos y condiciones acordados.</p><p><strong>Soporte T&eacute;cnico:</strong> El soporte t&eacute;cnico ser&aacute; proporcionado seg&uacute;n los t&eacute;rminos especificados en la propuesta y no incluye soporte adicional fuera del alcance definido sin un costo adicional.</p><p><strong>Modificaciones:</strong> Cualquier modificaci&oacute;n a los t&eacute;rminos de esta propuesta deber&aacute; ser acordada por ambas partes y documentada formalmente.</p><p><strong>Inicio de Labores:</strong> No se iniciar&aacute;n labores de ning&uacute;n tipo sin la respectiva Orden de Servicio y/o anticipo de EL CLIENTE.</p><p><strong>Impacto de Disposiciones Gubernamentales:</strong> Cualesquiera disposiciones de &iacute;ndole gubernamental cuyo impacto incida de manera directa en el estipendio de Servicios TAMIKA 0302, C.A. ser&aacute; considerado motivo para evaluar, conjuntamente, reajustes en las tarifas o cambios en los t&eacute;rminos comerciales.</p><p><strong>Servicios Incluidos:</strong> Esta oferta no incluye otros servicios o especialidades distintas a las expresamente se&ntilde;aladas.</p>`;
+const DEFAULT_VIGENCIA = '15 días hábiles';
 
 const parseVe = (str) => { if (!str && str !== 0) return 0; if (typeof str === 'number') return str; return parseFloat(str.toString().replace(/\./g, '').replace(',', '.')) || 0; };
 const formatUsd = (val) => currency(val, { symbol: '$', separator: '.', decimal: ',' }).format();
@@ -109,7 +109,7 @@ export default function TamikaERP() {
   };
 
   const guardarTasaBD = async () => {
-    if (parseVe(tasaBCV) <= 0) return alert("Valores invÃ¡lidos.");
+    if (parseVe(tasaBCV) <= 0) return alert("Valores inválidos.");
     await fetch('/api/tasas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bcv: parseVe(tasaBCV), paralelo: parseVe(tasaParalelo) }) });
     alert("Tasas guardadas.");
   };
@@ -194,11 +194,11 @@ export default function TamikaERP() {
     setEditandoId(null); setNuevoNombre(''); setNuevoAlias(''); setNuevoRif(''); setNuevaDir(''); cargarDatos();
   };
   const iniciarEdicion = (cli) => { setEditandoId(cli.id); setNuevoNombre(cli.nombre); setNuevoAlias(cli.alias || ''); setNuevoRif(cli.rif); setNuevaDir(cli.direccion || ''); };
-  const eliminarCliente = async (id) => { if(confirm('Â¿Eliminar cliente?')) { await fetch(`/api/clientes/${id}`, { method: 'DELETE' }); cargarDatos(); } };
+  const eliminarCliente = async (id) => { if(confirm('¿Eliminar cliente?')) { await fetch(`/api/clientes/${id}`, { method: 'DELETE' }); cargarDatos(); } };
 
 
   // =====================================
-  // EL MOTOR MATEMÃTICO DE PDF BLINDADO v18 (DISEÃ‘O FINAL)
+  // EL MOTOR MATEMÁTICO DE PDF BLINDADO v18 (DISEÑO FINAL)
   // =====================================
   const generarPDFNativo = async (accion = 'abrir') => {
     try {
@@ -219,7 +219,7 @@ export default function TamikaERP() {
 
       const tableBody = [
         [
-          { text: 'DESCRIPCIÃ“N', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 9, margin: [5, 6], border: [false, false, false, false] },
+          { text: 'DESCRIPCIÓN', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 9, margin: [5, 6], border: [false, false, false, false] },
           { text: 'CANT.', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 9, alignment: 'center', margin: [5, 6], border: [false, false, false, false] },
           { text: 'PRECIO UNID.', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 9, alignment: 'right', margin: [5, 6], border: [false, false, false, false] },
           { text: 'TOTAL USD', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 9, alignment: 'right', margin: [5, 6], border: [false, false, false, false] }
@@ -264,7 +264,7 @@ export default function TamikaERP() {
               {
                 width: '*',
                 stack: [
-                  // Texto aumentado de tamaÃ±o y movido 15px a la derecha
+                  // Texto aumentado de tamaño y movido 15px a la derecha
                   { text: 'Servicios Tamika 0302, C.A.', fontSize: 17, bold: true, color: '#0f172a' },
                   { text: 'RIF: J-50634330-4', fontSize: 11, bold: true, color: '#475569' }
                 ],
@@ -319,7 +319,7 @@ export default function TamikaERP() {
                         { text: 'Servicios TAMIKA 0302, C.A.', fontSize: 10, bold: true, color: '#0f172a' },
                         { text: 'RIF: J-50634330-4', fontSize: 9, color: '#475569', margin: [0, 4, 0, 4] },
                         { text: 'Carretera Vieja Caracas - Baruta, Torre Gamma, Piso 9. Apto 9-B. Caracas - Venezuela.', fontSize: 9, color: '#475569', lineHeight: 1.2 },
-                        { text: 'TelÃ©fono: +58 414-2087167', fontSize: 9, bold: true, color: '#0f172a', margin: [0, 4, 0, 2] },
+                        { text: 'Teléfono: +58 414-2087167', fontSize: 9, bold: true, color: '#0f172a', margin: [0, 4, 0, 2] },
                         { text: 'www.serviciostamika.com', fontSize: 9, color: '#475569' }
                       ],
                       margin: [10, 10], ...cardStyle
@@ -363,12 +363,12 @@ export default function TamikaERP() {
                   fillColor: '#f8fafc', // Fondo gris claro para el bloque
                   hLineWidth: function (i, node) { return 0; }, vLineWidth: function (i, node) { return 0; }
                 },
-                margin: [0, 0, 0, 30] // Margen inferior para separar de tÃ©rminos
+                margin: [0, 0, 0, 30] // Margen inferior para separar de términos
               }
             ]
           },
 
-          { text: 'TÃ‰RMINOS Y CONDICIONES GENERALES', fontSize: 10, color: '#0f172a', bold: true, margin: [0, 0, 0, 10] },
+          { text: 'TÉRMINOS Y CONDICIONES GENERALES', fontSize: 10, color: '#0f172a', bold: true, margin: [0, 0, 0, 10] },
           ...terminosFormateados,
 
           // ===============================================
@@ -402,24 +402,29 @@ export default function TamikaERP() {
   return (
     <div className="flex min-h-screen font-sans bg-slate-50 text-slate-900 overflow-x-hidden">
       <aside className="w-80 bg-slate-900 text-slate-100 p-5 flex flex-col gap-4 fixed h-full shadow-xl overflow-y-auto z-10">
-        <div className="flex items-center gap-3 mb-4"><div className="w-10 h-10 rounded-xl bg-emerald-600 grid place-items-center text-xl">âš™ï¸</div><div><h1 className="text-lg font-bold">TAMIKA ERP</h1></div></div>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl border border-slate-700 bg-white">
+            <img src="/logo.png" alt="" className="h-8 w-8 object-contain" />
+          </div>
+          <div><h1 className="text-lg font-bold leading-tight">TAMIKA ERP</h1></div>
+        </div>
         <nav className="flex flex-col gap-2">
           {[
             { id: 'dashboard', label: 'Dashboard' },
             { id: 'cotizacion', label: 'Propuestas' },
             { id: 'contabilidad', label: 'Contabilidad' },
-            { id: 'catalogos', label: 'Catalogos' },
+            { id: 'catalogos', label: 'Catálogos' },
           ].map((view) => (
             <button key={view.id} onClick={() => setActiveView(view.id)} className={`text-left px-4 py-3 rounded-lg font-medium ${activeView === view.id ? 'bg-slate-700 text-emerald-400' : 'hover:bg-slate-800 text-slate-300'}`}>{view.label}</button>
           ))}
         </nav>
         <div className="bg-slate-800 rounded-xl p-4 mt-6 border border-slate-700">
-          <h3 className="text-sm font-bold text-white mb-3">Tasas del DÃ­a</h3>
-          <div className="flex gap-2 mb-3"><button onClick={consultarApiTasas} className="flex-1 bg-indigo-600 text-white text-xs py-1 rounded shadow">ðŸŒ API</button><button onClick={guardarTasaBD} className="flex-1 bg-emerald-600 text-white text-xs py-1 rounded shadow">ðŸ’¾ Guardar</button></div>
+          <h3 className="text-sm font-bold text-white mb-3">Tasas del Día</h3>
+          <div className="flex gap-2 mb-3"><button onClick={consultarApiTasas} className="flex-1 bg-indigo-600 text-white text-xs py-1 rounded shadow">API</button><button onClick={guardarTasaBD} className="flex-1 bg-emerald-600 text-white text-xs py-1 rounded shadow">Guardar</button></div>
           <div className="space-y-3">
             <div><label className="text-xs text-slate-400">BCV</label><input type="text" value={tasaBCV} onChange={(e) => handleTasasChange('bcv', e.target.value)} className="w-full bg-slate-700 text-white border-none rounded px-3 py-2 text-sm outline-none mt-1" /></div>
             <div><label className="text-xs text-slate-400">Paralelo</label><input type="text" value={tasaParalelo} onChange={(e) => handleTasasChange('par', e.target.value)} className="w-full bg-slate-700 text-white border-none rounded px-3 py-2 text-sm outline-none mt-1" /></div>
-            <div className="pt-2 border-t border-slate-700"><label className="text-xs text-slate-400">RelaciÃ³n</label><input type="text" value={defRel} readOnly className="w-full bg-slate-900 text-emerald-400 font-mono font-bold rounded px-3 py-2 text-sm outline-none mt-1 text-right" /></div>
+            <div className="pt-2 border-t border-slate-700"><label className="text-xs text-slate-400">Relación</label><input type="text" value={defRel} readOnly className="w-full bg-slate-900 text-emerald-400 font-mono font-bold rounded px-3 py-2 text-sm outline-none mt-1 text-right" /></div>
           </div>
         </div>
       </aside>
@@ -434,16 +439,16 @@ export default function TamikaERP() {
         {/* CATALOGOS */}
         {activeView === 'catalogos' && (
           <section className="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
-            <h2 className="text-xl font-bold mb-4">{editandoId ? 'Editar Cliente' : 'GestiÃ³n de Clientes'}</h2>
+            <h2 className="text-xl font-bold mb-4">{editandoId ? 'Editar Cliente' : 'Gestión de Clientes'}</h2>
             <form onSubmit={guardarCliente} className="grid grid-cols-4 gap-3 mb-6 p-4 rounded-xl border bg-slate-50 items-end">
-              <div className="col-span-1"><label className="text-xs text-slate-500 font-bold">RazÃ³n Social</label><input type="text" required value={nuevoNombre} onChange={(e) => setNuevoNombre(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
+              <div className="col-span-1"><label className="text-xs text-slate-500 font-bold">Razón Social</label><input type="text" required value={nuevoNombre} onChange={(e) => setNuevoNombre(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
               <div className="col-span-1"><label className="text-xs text-slate-500 font-bold">Alias (Corto para PDF)</label><input type="text" placeholder="Ej: MPPOP" value={nuevoAlias} onChange={(e) => setNuevoAlias(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
               <div className="col-span-1"><label className="text-xs text-slate-500 font-bold">RIF</label><input type="text" required value={nuevoRif} onChange={(e) => setNuevoRif(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
               <div className="col-span-1"><button type="submit" className="w-full py-2 text-white bg-slate-900 rounded-lg text-sm font-medium">Guardar</button></div>
-              <div className="col-span-4"><label className="text-xs text-slate-500 font-bold">DirecciÃ³n Fiscal</label><input type="text" value={nuevaDir} onChange={(e) => setNuevaDir(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
+              <div className="col-span-4"><label className="text-xs text-slate-500 font-bold">Dirección Fiscal</label><input type="text" value={nuevaDir} onChange={(e) => setNuevaDir(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
             </form>
             <table className="w-full text-left border-collapse">
-              <thead><tr className="bg-slate-100 text-sm"><th className="p-3">Nombre</th><th className="p-3">Alias</th><th className="p-3">RIF</th><th className="p-3 text-right">AcciÃ³n</th></tr></thead>
+              <thead><tr className="bg-slate-100 text-sm"><th className="p-3">Nombre</th><th className="p-3">Alias</th><th className="p-3">RIF</th><th className="p-3 text-right">Acción</th></tr></thead>
               <tbody className="text-sm">
                 {clientes.map(cli => (
                   <tr key={cli.id} className="border-b hover:bg-slate-50"><td className="p-3 font-medium">{cli.nombre}</td><td className="p-3 font-bold text-indigo-600">{cli.alias || '-'}</td><td className="p-3 text-slate-500">{cli.rif}</td><td className="p-3 text-right"><button onClick={() => iniciarEdicion(cli)} className="text-blue-600 font-medium mr-4">Editar</button><button onClick={() => eliminarCliente(cli.id)} className="text-red-500 font-medium">Eliminar</button></td></tr>
@@ -510,7 +515,7 @@ export default function TamikaERP() {
                    <div><label className="block text-xs font-bold text-indigo-700">% Gan</label><input type="text" value={defGan} onChange={(e)=>handleGlobalChange('defGan', 'gan', e.target.value)} className="w-full border rounded px-3 py-2" /></div>
                    <div><label className="block text-xs font-bold text-indigo-700">% Ret</label><input type="text" value={defRet} onChange={(e)=>handleGlobalChange('defRet', 'ret', e.target.value)} className="w-full border rounded px-3 py-2" /></div>
                    <div><label className="block text-xs font-bold text-indigo-700">% Com</label><input type="text" value={defCom} onChange={(e)=>handleGlobalChange('defCom', 'com', e.target.value)} className="w-full border rounded px-3 py-2" /></div>
-                   <div><label className="block text-xs font-bold text-indigo-700">RelaciÃ³n</label><input type="text" value={defRel} onChange={(e)=>handleGlobalChange('defRel', 'rel', e.target.value)} className="w-full border rounded px-3 py-2 bg-white" /></div>
+                   <div><label className="block text-xs font-bold text-indigo-700">Relación</label><input type="text" value={defRel} onChange={(e)=>handleGlobalChange('defRel', 'rel', e.target.value)} className="w-full border rounded px-3 py-2 bg-white" /></div>
                  </div>
                )}
              </div>
@@ -519,7 +524,7 @@ export default function TamikaERP() {
                <table className="w-full text-left text-sm min-w-max">
                  <thead className="bg-slate-800 text-white">
                    <tr>
-                     <th className="p-3 w-1/3">DescripciÃ³n</th>
+                     <th className="p-3 w-1/3">Descripción</th>
                      {advMode && <th className="p-3 text-center bg-indigo-600">Costo Base($)</th>}
                      <th className="p-3 text-center w-16">Cant.</th>
                      {advMode && <><th className="p-3 text-center w-16 bg-indigo-600">%G</th><th className="p-3 text-center w-16 bg-indigo-600">%R</th><th className="p-3 text-center w-16 bg-indigo-600">%C</th><th className="p-3 text-center w-16 bg-indigo-600">Rel.</th></>}
@@ -544,16 +549,16 @@ export default function TamikaERP() {
                        </>}
                        <td className="p-2 text-right">{advMode ? <span className="font-medium text-slate-700 pt-2 block">{formatUsd(pUnitCalc)}</span> : <input type="text" value={item.unitarioManual} onChange={(e)=>actualizarItem(item.id, 'unitarioManual', e.target.value)} className="w-24 border rounded px-2 py-1 text-right focus:border-indigo-500 outline-none" />}</td>
                        <td className="p-2 text-right font-bold text-slate-800 pt-3">{formatUsd(pUnitCalc * parseVe(item.cant))}</td>
-                       <td className="p-2 text-center pt-3"><button onClick={()=>eliminarItem(item.id)} className="text-red-400 font-bold">âœ–</button></td>
+                       <td className="p-2 text-center pt-3"><button onClick={()=>eliminarItem(item.id)} className="text-red-500 text-xs font-bold">Eliminar</button></td>
                      </tr>
                    )})}
                  </tbody>
                </table>
-               <div className="p-3 bg-slate-50 border-t"><button onClick={agregarItemCoti} className="px-4 py-2 bg-emerald-600 text-white rounded font-bold text-sm">+ AÃ±adir Servicio</button></div>
+               <div className="p-3 bg-slate-50 border-t"><button onClick={agregarItemCoti} className="px-4 py-2 bg-emerald-600 text-white rounded font-bold text-sm">+ Añadir Servicio</button></div>
              </div>
 
              <div className="flex flex-col md:flex-row gap-6">
-               <div className="flex-1"><label className="text-xs text-slate-500 font-bold uppercase mb-2 block">TÃ©rminos y Condiciones</label><ReactQuill theme="snow" value={condiciones} onChange={setCondiciones} className="bg-white h-64 pb-10" /></div>
+               <div className="flex-1"><label className="text-xs text-slate-500 font-bold uppercase mb-2 block">Términos y Condiciones</label><ReactQuill theme="snow" value={condiciones} onChange={setCondiciones} className="bg-white h-64 pb-10" /></div>
                <div className="text-right space-y-3 w-80 bg-slate-800 p-6 rounded-xl text-white h-fit mt-6">
                  <div className="flex justify-between text-sm text-slate-300"><span>SUBTOTAL</span><span className="font-semibold">{formatUsd(calcularSubtotal())}</span></div>
                  <div className="flex justify-between text-sm text-slate-400"><span>IVA 16%</span><span>{formatUsd(calcularIva())}</span></div>

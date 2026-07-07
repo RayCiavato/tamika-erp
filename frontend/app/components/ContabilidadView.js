@@ -270,7 +270,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
         <button onClick={resetForm} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow hover:bg-slate-800">Nuevo movimiento</button>
       </div>
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         <Metric title="Ingresos" value={formatUsd(resumen.totalIngresos)} tone="emerald" />
         <Metric title="Egresos" value={formatUsd(resumen.totalEgresos)} tone="red" />
         <Metric title="Balance" value={formatUsd(resumen.balance)} tone={(resumen.balance || 0) >= 0 ? 'emerald' : 'red'} />
@@ -280,14 +280,14 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
 
       {mensaje && <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm font-medium text-slate-700 shadow-sm">{mensaje}</div>}
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[420px_1fr]">
-        <form onSubmit={guardarMovimiento} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="grid min-w-0 grid-cols-1 gap-6 2xl:grid-cols-[minmax(360px,420px)_minmax(0,1fr)]">
+        <form onSubmit={guardarMovimiento} className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="font-bold text-slate-950">{editingId ? 'Editar movimiento' : 'Crear movimiento'}</h3>
             {editingId && <button type="button" onClick={resetForm} className="text-xs font-bold text-slate-500 hover:text-slate-900">Cancelar</button>}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Tipo">
               <select value={form.tipo} onChange={(e) => updateTipo(e.target.value)} className="input">
                 {TIPOS.map((tipo) => <option key={tipo.value} value={tipo.value}>{tipo.label}</option>)}
@@ -298,10 +298,10 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
                 {ESTADOS.map((estado) => <option key={estado.value} value={estado.value}>{estado.label}</option>)}
               </select>
             </Field>
-            <Field label="Concepto" className="col-span-2">
+            <Field label="Concepto" className="sm:col-span-2">
               <input required value={form.concepto} onChange={(e) => updateForm('concepto', e.target.value)} className="input" />
             </Field>
-            <Field label="Descripción" className="col-span-2">
+            <Field label="Descripción" className="sm:col-span-2">
               <textarea value={form.descripcion} onChange={(e) => updateForm('descripcion', e.target.value)} rows={3} className="input resize-y" />
             </Field>
             <Field label="Monto USD">
@@ -319,7 +319,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
                 {loadingTasa ? 'Consultando tasa actual...' : tasaMensaje || tasaFuenteLabel[form.tasaFuente] || tasaFuenteLabel.NO_DISPONIBLE}
               </p>
             </div>
-            <Field label="Monto Bs calculado" className="col-span-2">
+            <Field label="Monto Bs calculado" className="sm:col-span-2">
               <input readOnly value={montoBsCalculado > 0 ? formatBs(montoBsCalculado) : '-'} className="input bg-slate-100 font-bold text-slate-600" />
             </Field>
             <Field label="Fecha movimiento">
@@ -328,7 +328,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
             <Field label="Fecha vencimiento">
               <input type="date" value={form.fechaVencimiento} onChange={(e) => updateForm('fechaVencimiento', e.target.value)} className="input" />
             </Field>
-            <Field label="Cliente" className="col-span-2">
+            <Field label="Cliente" className="sm:col-span-2">
               <select value={form.clienteId} onChange={(e) => updateForm('clienteId', e.target.value)} className="input">
                 <option value="">Sin cliente asociado</option>
                 {clientes.map((cliente) => <option key={cliente.id} value={cliente.id}>{cliente.nombre}</option>)}
@@ -347,8 +347,8 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
           </button>
         </form>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <form onSubmit={handleFilterSearch} className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-5">
+        <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <form onSubmit={handleFilterSearch} className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
             <select value={filters.tipo} onChange={(e) => updateFilter('tipo', e.target.value)} className="input">
               <option value="">Todos los tipos</option>
               {TIPOS.map((tipo) => <option key={tipo.value} value={tipo.value}>{tipo.label}</option>)}
@@ -359,22 +359,22 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
             </select>
             <input type="date" value={filters.desde} onChange={(e) => updateFilter('desde', e.target.value)} className="input" />
             <input type="date" value={filters.hasta} onChange={(e) => updateFilter('hasta', e.target.value)} className="input" />
-            <div className="flex gap-2">
+            <div className="flex gap-2 md:col-span-2 xl:col-span-4 2xl:col-span-1">
               <input placeholder="Buscar..." value={filters.buscar} onChange={(e) => updateFilter('buscar', e.target.value)} className="input" />
               <button className="rounded-lg bg-slate-900 px-3 text-sm font-bold text-white">Filtrar</button>
             </div>
           </form>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
+          <div className="max-w-full overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-slate-100 text-xs uppercase text-slate-500">
                 <tr>
                   <th className="p-3">Fecha</th>
                   <th className="p-3">Movimiento</th>
                   <th className="p-3">Cliente/Ref.</th>
-                  <th className="p-3">Estado</th>
+                  <th className="p-3 whitespace-nowrap">Estado</th>
                   <th className="p-3 text-right">Monto</th>
-                  <th className="p-3 text-right">Acciones</th>
+                  <th className="p-3 text-right whitespace-nowrap">Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -388,13 +388,13 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
                       <p className="text-xs text-slate-500">{TIPOS.find((t) => t.value === mov.tipo)?.label || mov.tipo}</p>
                     </td>
                     <td className="p-3 text-slate-600">{mov.cliente?.nombre || mov.referencia || mov.proveedorId || '-'}</td>
-                    <td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${estadoStyles[mov.estado] || 'bg-slate-100 text-slate-700'}`}>{mov.estado}</span></td>
+                    <td className="p-3 whitespace-nowrap"><span className={`rounded-full px-2 py-1 text-xs font-bold ${estadoStyles[mov.estado] || 'bg-slate-100 text-slate-700'}`}>{mov.estado}</span></td>
                     <td className="p-3 text-right">
                       <p className="font-extrabold">{formatUsd(mov.montoUsd)}</p>
                       {mov.montoBs ? <p className="text-xs font-semibold text-slate-500">{formatBs(mov.montoBs)}</p> : null}
                     </td>
                     <td className="p-3">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex justify-end gap-2 whitespace-nowrap">
                         <button type="button" onClick={() => editarMovimiento(mov)} className="text-xs font-bold text-blue-600">Editar</button>
                         {mov.estado !== 'PAGADO' && <button type="button" onClick={() => cambiarEstado(mov, 'PAGADO')} className="text-xs font-bold text-emerald-600">Pagar</button>}
                         {mov.estado !== 'ANULADO' && <button type="button" onClick={() => cambiarEstado(mov, 'ANULADO')} className="text-xs font-bold text-slate-500">Anular</button>}

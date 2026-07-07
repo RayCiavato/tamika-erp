@@ -459,8 +459,8 @@ export default function TamikaERP() {
   if (!isMounted) return null;
 
   return (
-    <div className="flex min-h-screen font-sans bg-slate-50 text-slate-900 overflow-x-hidden">
-      <aside className="w-80 bg-slate-900 text-slate-100 p-5 flex flex-col gap-4 fixed h-full shadow-xl overflow-y-auto z-10">
+    <div className="flex min-h-screen flex-col font-sans bg-slate-50 text-slate-900 lg:flex-row">
+      <aside className="z-10 flex w-full flex-col gap-4 bg-slate-900 p-5 text-slate-100 shadow-xl lg:sticky lg:top-0 lg:h-screen lg:w-80 lg:shrink-0 lg:overflow-y-auto">
         <div className="flex items-center gap-3 mb-4">
           <div className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl border border-slate-700 bg-white">
             <img src="/logo.png" alt="" className="h-8 w-8 object-contain" />
@@ -488,7 +488,7 @@ export default function TamikaERP() {
         </div>
       </aside>
 
-      <main className="flex-1 p-8 space-y-6 ml-80 relative">
+      <main className="relative min-w-0 flex-1 space-y-6 p-4 sm:p-6 lg:p-8">
         {activeView === 'dashboard' && (<DashboardView resumen={dashboardResumen} loading={loadingDashboard} />)}
 
         {activeView === 'contabilidad' && (
@@ -499,12 +499,12 @@ export default function TamikaERP() {
         {activeView === 'catalogos' && (
           <section className="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
             <h2 className="text-xl font-bold mb-4">{editandoId ? 'Editar Cliente' : 'Gestión de Clientes'}</h2>
-            <form onSubmit={guardarCliente} className="grid grid-cols-4 gap-3 mb-6 p-4 rounded-xl border bg-slate-50 items-end">
-              <div className="col-span-1"><label className="text-xs text-slate-500 font-bold">Razón Social</label><input type="text" required value={nuevoNombre} onChange={(e) => setNuevoNombre(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
-              <div className="col-span-1"><label className="text-xs text-slate-500 font-bold">Alias (Corto para PDF)</label><input type="text" placeholder="Ej: MPPOP" value={nuevoAlias} onChange={(e) => setNuevoAlias(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
-              <div className="col-span-1"><label className="text-xs text-slate-500 font-bold">RIF</label><input type="text" required value={nuevoRif} onChange={(e) => setNuevoRif(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
-              <div className="col-span-1"><button type="submit" className="w-full py-2 text-white bg-slate-900 rounded-lg text-sm font-medium">Guardar</button></div>
-              <div className="col-span-4"><label className="text-xs text-slate-500 font-bold">Dirección Fiscal</label><input type="text" value={nuevaDir} onChange={(e) => setNuevaDir(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
+            <form onSubmit={guardarCliente} className="grid grid-cols-1 gap-3 mb-6 p-4 rounded-xl border bg-slate-50 items-end sm:grid-cols-2 xl:grid-cols-4">
+              <div><label className="text-xs text-slate-500 font-bold">Razón Social</label><input type="text" required value={nuevoNombre} onChange={(e) => setNuevoNombre(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
+              <div><label className="text-xs text-slate-500 font-bold">Alias (Corto para PDF)</label><input type="text" placeholder="Ej: MPPOP" value={nuevoAlias} onChange={(e) => setNuevoAlias(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
+              <div><label className="text-xs text-slate-500 font-bold">RIF</label><input type="text" required value={nuevoRif} onChange={(e) => setNuevoRif(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
+              <div><button type="submit" className="w-full py-2 text-white bg-slate-900 rounded-lg text-sm font-medium">Guardar</button></div>
+              <div className="sm:col-span-2 xl:col-span-4"><label className="text-xs text-slate-500 font-bold">Dirección Fiscal</label><input type="text" value={nuevaDir} onChange={(e) => setNuevaDir(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
             </form>
             <table className="w-full text-left border-collapse">
               <thead><tr className="bg-slate-100 text-sm"><th className="p-3">Nombre</th><th className="p-3">Alias</th><th className="p-3">RIF</th><th className="p-3 text-right">Acción</th></tr></thead>
@@ -531,38 +531,38 @@ export default function TamikaERP() {
                </div>
              </div>
 
-             <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-                <div className="md:col-span-2">
+             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12">
+                <div className="lg:col-span-4">
                   <label className="text-xs text-slate-500 font-bold uppercase">Cliente</label>
                   <select value={clienteSelect} onChange={(e) => setClienteSelect(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
                     <option value="">-- Selecciona un Cliente --</option>
                     {clientes.map(cli => ( <option key={cli.id} value={cli.id}>{cli.nombre} ({cli.alias})</option> ))}
                   </select>
                 </div>
-                <div className="md:col-span-2">
+                <div className="lg:col-span-4">
                   <label className="text-xs text-slate-500 font-bold uppercase">Titulo del documento</label>
                   <input type="text" value={tituloCoti} onChange={(e)=>setTituloCoti(e.target.value)} placeholder="Ej: Presupuesto de Suministros..." className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
                 </div>
-                <div>
+                <div className="lg:col-span-2">
                   <label className="text-xs text-slate-500 font-bold uppercase">Tipo</label>
                   <select value={tipoDocumento} onChange={(e)=>handleTipoDocumentoChange(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
                     {DOCUMENTO_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                   </select>
                 </div>
-                <div>
+                <div className="lg:col-span-2">
                   <label className="text-xs text-slate-500 font-bold uppercase">Estado</label>
                   <select value={estadoDocumento} onChange={(e)=>setEstadoDocumento(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
                     {ESTADO_DOCUMENTO_OPTIONS.map(estado => <option key={estado} value={estado}>{estado}</option>)}
                   </select>
                 </div>
-                <div>
+                <div className="sm:col-span-2 lg:col-span-4 xl:col-span-3">
                   <label className="text-xs text-slate-500 font-bold uppercase">Correlativo</label>
                   <div className="mt-1 flex gap-2">
                     <input type="text" value={nroCoti} onChange={(e)=>setNroCoti(e.target.value)} placeholder="Generando..." className="min-w-0 flex-1 border rounded-lg px-3 py-2 text-sm outline-none bg-white text-slate-700 font-mono font-bold focus:border-indigo-500" />
                     <button type="button" onClick={() => cargarSiguienteCorrelativo(tipoDocumento)} className="rounded-lg border border-slate-300 bg-slate-100 px-3 text-xs font-bold text-slate-700 hover:bg-slate-200">Auto</button>
                   </div>
                 </div>
-                <div>
+                <div className="lg:col-span-3 xl:col-span-2">
                   <label className="text-xs text-slate-500 font-bold uppercase">Vigencia</label>
                   <input type="text" value={vigencia} onChange={(e)=>setVigencia(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
                 </div>
@@ -573,7 +573,7 @@ export default function TamikaERP() {
                  <input type="checkbox" checked={advMode} onChange={toggleModoAvanzado} className="w-4 h-4 accent-indigo-600" /> Mostrar campos avanzados
                </label>
                {advMode && (
-                 <div className="grid grid-cols-4 gap-4 text-sm pt-3 mt-3 border-t border-indigo-200">
+                 <div className="grid grid-cols-1 gap-4 text-sm pt-3 mt-3 border-t border-indigo-200 sm:grid-cols-2 xl:grid-cols-4">
                    <div><label className="block text-xs font-bold text-indigo-700">% Gan</label><input type="text" value={defGan} onChange={(e)=>handleGlobalChange('defGan', 'gan', e.target.value)} className="w-full border rounded px-3 py-2" /></div>
                    <div><label className="block text-xs font-bold text-indigo-700">% Ret</label><input type="text" value={defRet} onChange={(e)=>handleGlobalChange('defRet', 'ret', e.target.value)} className="w-full border rounded px-3 py-2" /></div>
                    <div><label className="block text-xs font-bold text-indigo-700">% Com</label><input type="text" value={defCom} onChange={(e)=>handleGlobalChange('defCom', 'com', e.target.value)} className="w-full border rounded px-3 py-2" /></div>

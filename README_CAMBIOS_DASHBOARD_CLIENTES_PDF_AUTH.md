@@ -25,10 +25,12 @@
 ## Propuestas y PDF
 
 - El selector de cliente carga datos desde Catalogos y rellena snapshots editables para el PDF.
+- La seccion `Barra lateral del PDF` ahora selecciona el cliente desde Catalogos y muestra sus datos en una ficha de solo lectura para evitar doble carga manual.
 - La propuesta conserva datos historicos en `datosPdf` y campos snapshot de cliente.
 - El PDF muestra visualmente el numero como `COTIZACION NO. 0000210` o `PRESUPUESTO NO. 0000210`, sin forzar el prefijo interno `PROP-`.
+- Se ajusto el bloque superior del PDF para que fecha y numero de cotizacion queden dentro del margen.
 - La tabla economica usa columnas `Item`, `Descripcion del Servicio`, `Cantidad`, `Precio Unitario USD` y `Subtotal USD`.
-- La barra lateral incluye cliente, RIF, direccion, telefono/email si existen, empresa, logo translucido y firma/sello mas grandes.
+- La barra lateral incluye cliente, RIF, direccion, telefono/email si existen, empresa, logo translucido y firma/sello mas grandes; las direcciones largas hacen salto de linea dentro del cuadro.
 - Se agrego firma final con Frank Salazar y datos de contacto.
 - Para iniciar el correlativo en `0000210`, usar:
 
@@ -49,10 +51,18 @@ Content-Type: application/json
 - Se agrego `Usuario` con password hasheado usando `bcryptjs`.
 - Se usa JWT con `Authorization: Bearer <token>`.
 - Si no hay usuarios, la pantalla inicial permite crear el primer ADMIN.
+- Despues del primer ADMIN, el registro publico queda cerrado.
 - Variables nuevas en `.env.example`:
   - `JWT_SECRET`
   - `JWT_EXPIRES_IN`
-  - `ALLOW_USER_REGISTER`
+
+## Usuarios enterprise
+
+- Nueva vista `Usuarios`, visible solo para ADMIN.
+- Nuevo endpoint `GET /api/usuarios`, protegido con `requireAdmin`.
+- Nuevo endpoint `POST /api/usuarios`, protegido con `requireAdmin`, para crear usuarios con rol `USUARIO` o `ADMIN`.
+- Nuevo endpoint `PUT /api/usuarios/:id`, protegido con `requireAdmin`, para editar nombre, email, rol, estado activo y password opcional.
+- El backend evita dejar el sistema sin al menos un administrador activo.
 
 ## Auditoria
 
@@ -97,3 +107,7 @@ No usar `docker compose down -v` en servidor si se quiere conservar la data.
 - `GET /api/dashboard/balance`
 - `GET /api/reportes/contabilidad`
 - `GET /api/audit-logs`
+- `GET /api/usuarios` con ADMIN
+- `POST /api/usuarios` y `PUT /api/usuarios/:id` con usuario temporal
+- `GET /api/usuarios` con usuario no ADMIN devuelve `403`
+- `POST /api/auth/register` despues del primer ADMIN devuelve `403`

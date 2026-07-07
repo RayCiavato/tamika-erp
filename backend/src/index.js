@@ -23,7 +23,7 @@ const BCV_API_TIMEOUT_MS = readPositiveNumber(process.env.BCV_API_TIMEOUT_MS, 50
 const BCV_API_CACHE_TTL_SECONDS = readPositiveNumber(process.env.BCV_API_CACHE_TTL_SECONDS, 3600);
 const JWT_SECRET = process.env.JWT_SECRET || 'tamika-dev-secret-change-me';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '8h';
-const ALLOW_USER_REGISTER = process.env.ALLOW_USER_REGISTER === 'true';
+const USUARIO_ROLES = ['ADMIN', 'USUARIO'];
 let bcvCache = null;
 
 app.use(cors());
@@ -51,6 +51,12 @@ const publicUser = (user) => user && ({
   email: user.email,
   rol: user.rol,
   activo: user.activo,
+});
+
+const adminUserView = (user) => user && ({
+  ...publicUser(user),
+  createdAt: user.createdAt,
+  updatedAt: user.updatedAt,
 });
 
 const signAuthToken = (user) => jwt.sign(
@@ -639,7 +645,7 @@ const buildReporteContable = (movimientos) => {
 app.get('/api/auth/setup-status', async (req, res) => {
   try {
     const totalUsuarios = await prisma.usuario.count();
-    res.json({ requiresSetup: totalUsuarios === 0, allowRegister: ALLOW_USER_REGISTER });
+    res.json({ requiresSetup: totalUsuarios === 0, allowRegister: totalUsuarios === 0 });
   } catch (error) {
     serializeError(res, 500, 'No se pudo revisar la configuracion de usuarios.');
   }
@@ -648,8 +654,8 @@ app.get('/api/auth/setup-status', async (req, res) => {
 app.post('/api/auth/register', async (req, res) => {
   try {
     const totalUsuarios = await prisma.usuario.count();
-    if (totalUsuarios > 0 && !ALLOW_USER_REGISTER) {
-      return serializeError(res, 403, 'Registro deshabilitado.');
+    if (totalUsuarios > 0) {
+      return serializeError(res, 403, 'Registro público deshabilitado. Un administrador debe crear usuarios.');
     }
 
     const nombre = req.body.nombre?.toString().trim();
@@ -729,6 +735,106 @@ app.post('/api/auth/logout', authenticateToken, async (req, res) => {
 });
 
 app.use('/api', authenticateToken);
+
+// USUARIOS
+const parseActivoUsuario = (value) => {
+  if (value === undefined) return true;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return !['false', '0', 'no', 'inactivo'].includes(value.trim().toLowerCase());
+  return Boolean(value);
+};
+
+const normalizeUsuarioPayload = (body, { requirePassword = false } = {}) => {
+  const nombre = body.nombre?.toString().trim();
+  const email = body.email?.toString().trim().toLowerCase();
+  const password = body.password?.toString() || '';
+  const rol = (body.rol?.toString().trim().toUpperCase() || 'USUARIO');
+  const activo = parseActivoUsuario(body.activo);
+  const errors = {};
+
+  if (!nombre) errors.nombre = 'El nombre es obligatorio.';
+  if (!email || !email.includes('@')) errors.email = 'El email es obligatorio y debe ser válido.';
+  if (!USUARIO_ROLES.includes(rol)) errors.rol = 'Rol inválido.';
+  if ((requirePassword || password) && password.length < 8) errors.password = 'La contraseña debe tener al menos 8 caracteres.';
+
+  if (Object.keys(errors).length) return { errors };
+  return { data: { nombre, email, rol, activo, password } };
+};
+
+app.get('/api/usuarios', requireAdmin, async (req, res) => {
+  try {
+    const usuarios = await prisma.usuario.findMany({
+      orderBy: [{ rol: 'asc' }, { nombre: 'asc' }],
+    });
+    res.json(usuarios.map(adminUserView));
+  } catch (error) {
+    serializeError(res, 500, 'No se pudieron cargar los usuarios.');
+  }
+});
+
+app.post('/api/usuarios', requireAdmin, async (req, res) => {
+  try {
+    const normalized = normalizeUsuarioPayload(req.body, { requirePassword: true });
+    if (normalized.errors) return serializeError(res, 400, 'Datos invalidos.', normalized.errors);
+
+    const { password, ...data } = normalized.data;
+    const usuario = await prisma.usuario.create({
+      data: {
+        ...data,
+        passwordHash: await bcrypt.hash(password, 12),
+      },
+    });
+    await logAudit(req, {
+      accion: 'USUARIO_CREATE',
+      entidad: 'Usuario',
+      entidadId: usuario.id,
+      descripcion: `Usuario creado por administrador: ${usuario.email}.`,
+      metadata: { rol: usuario.rol, activo: usuario.activo },
+    });
+    res.status(201).json(adminUserView(usuario));
+  } catch (error) {
+    if (error.code === 'P2002') return serializeError(res, 409, 'Ya existe un usuario con ese email.');
+    serializeError(res, 500, 'No se pudo crear el usuario.');
+  }
+});
+
+app.put('/api/usuarios/:id', requireAdmin, async (req, res) => {
+  try {
+    const normalized = normalizeUsuarioPayload(req.body, { requirePassword: false });
+    if (normalized.errors) return serializeError(res, 400, 'Datos invalidos.', normalized.errors);
+
+    const actual = await prisma.usuario.findUnique({ where: { id: req.params.id } });
+    if (!actual) return serializeError(res, 404, 'Usuario no encontrado.');
+
+    const { password, ...data } = normalized.data;
+    const quedariaSinAdmin = actual.rol === 'ADMIN' && (data.rol !== 'ADMIN' || !data.activo);
+    if (quedariaSinAdmin) {
+      const otrosAdmins = await prisma.usuario.count({
+        where: { id: { not: actual.id }, rol: 'ADMIN', activo: true },
+      });
+      if (otrosAdmins === 0) return serializeError(res, 400, 'Debe existir al menos un administrador activo.');
+    }
+
+    const updateData = { ...data };
+    if (password) updateData.passwordHash = await bcrypt.hash(password, 12);
+
+    const usuario = await prisma.usuario.update({
+      where: { id: req.params.id },
+      data: updateData,
+    });
+    await logAudit(req, {
+      accion: 'USUARIO_UPDATE',
+      entidad: 'Usuario',
+      entidadId: usuario.id,
+      descripcion: `Usuario actualizado por administrador: ${usuario.email}.`,
+      metadata: { rol: usuario.rol, activo: usuario.activo },
+    });
+    res.json(adminUserView(usuario));
+  } catch (error) {
+    if (error.code === 'P2002') return serializeError(res, 409, 'Ya existe un usuario con ese email.');
+    serializeError(res, 500, 'No se pudo actualizar el usuario.');
+  }
+});
 
 // CLIENTES
 app.get('/api/clientes/siguiente-codigo', async (req, res) => {

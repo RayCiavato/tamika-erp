@@ -6,6 +6,7 @@ import DashboardView from './components/DashboardView';
 import ContabilidadView from './components/ContabilidadView';
 import ReportesContablesView from './components/ReportesContablesView';
 import AuditoriaView from './components/AuditoriaView';
+import UsuariosView from './components/UsuariosView';
 const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
 import 'react-quill-new/dist/quill.snow.css';
 
@@ -169,8 +170,25 @@ export default function TamikaERP() {
 
   const handleClienteChange = (clienteId) => {
     setClienteSelect(clienteId);
+    if (!clienteId) {
+      setDatosPdf((prev) => ({
+        ...prev,
+        clienteCodigo: '',
+        clienteNombre: '',
+        clienteRif: '',
+        clienteDireccion: '',
+        clienteTelefono: '',
+        clienteEmail: '',
+      }));
+      return;
+    }
+
     const cliente = clientes.find((item) => item.id === clienteId);
     setDatosPdf((prev) => datosPdfDesdeCliente(cliente, prev, true));
+  };
+
+  const handlePdfClienteChange = (clienteId) => {
+    handleClienteChange(clienteId);
   };
 
   const updateDatosPdf = (field, value) => {
@@ -452,11 +470,23 @@ export default function TamikaERP() {
       const fechaPdf = d.toLocaleDateString('es-VE');
       const sidebarLine = (text, index) => ({
         text,
-        fontSize: index === 0 ? 6.5 : 6,
+        fontSize: index === 0 ? 6.4 : 5.4,
         bold: index === 0,
         color: '#444444',
-        margin: [0, index === 0 ? 0 : 4, 0, 0],
-        lineHeight: 1.05,
+        margin: [0, index === 0 ? 0 : 3, 0, 0],
+        lineHeight: 1.08,
+        noWrap: false,
+      });
+      const sidebarSection = (title, lines, y) => ({
+        table: {
+          widths: [112],
+          body: [
+            [{ text: title, fontSize: 6.8, bold: true, color: '#333333', margin: [0, 0, 0, 6] }],
+            ...(lines.length ? lines : ['Consumidor Final', 'N/A']).map((line, index) => [sidebarLine(line, index)]),
+          ],
+        },
+        layout: 'noBorders',
+        absolutePosition: { x: 18, y },
       });
 
       const docDefinition = {
@@ -473,30 +503,16 @@ export default function TamikaERP() {
             { image: logoBase64 || transparentPixel, width: 66, absolutePosition: { x: 22, y: 31 } },
             { text: 'Servicios\nTamika 0302,C.A', fontSize: 20, bold: true, color: '#333333', lineHeight: 0.84, absolutePosition: { x: 92, y: 35 } },
             { text: 'RIF.: J-50634330-4', fontSize: 12, color: '#444444', absolutePosition: { x: 95, y: 92 } },
-            { text: nombreDocumento, fontSize: 23, bold: true, color: '#333333', alignment: 'right', absolutePosition: { x: 390, y: 50 }, width: 170 },
-            { text: `Fecha: ${fechaPdf}`, fontSize: 8, color: '#555555', alignment: 'right', absolutePosition: { x: 408, y: 88 }, width: 150 },
-            { text: etiquetaNumeroPdf, fontSize: 8.5, bold: true, color: '#444444', alignment: 'right', absolutePosition: { x: 360, y: 112 }, width: 200 },
-            {
-              stack: [
-                { text: 'CLIENTE', fontSize: 6.8, bold: true, color: '#333333', margin: [0, 0, 0, 8] },
-                ...(sidebarCliente.length ? sidebarCliente.map(sidebarLine) : [sidebarLine('Consumidor Final', 0), sidebarLine('N/A', 1)]),
-              ],
-              absolutePosition: { x: 19, y: 158 },
-              width: 108,
-            },
-            {
-              stack: [
-                { text: 'EMPRESA', fontSize: 6.8, bold: true, color: '#333333', margin: [0, 0, 0, 8] },
-                ...sidebarEmpresa.map(sidebarLine),
-              ],
-              absolutePosition: { x: 19, y: 290 },
-              width: 108,
-            },
+            { text: nombreDocumento, fontSize: 22, bold: true, color: '#333333', alignment: 'right', absolutePosition: { x: 315, y: 50 }, width: 245 },
+            { text: `Fecha: ${fechaPdf}`, fontSize: 8, color: '#555555', alignment: 'right', absolutePosition: { x: 315, y: 88 }, width: 245 },
+            { text: etiquetaNumeroPdf, fontSize: 8.2, bold: true, color: '#444444', alignment: 'right', absolutePosition: { x: 315, y: 112 }, width: 245 },
+            sidebarSection('CLIENTE', sidebarCliente, 158),
+            sidebarSection('EMPRESA', sidebarEmpresa, 326),
             logoBase64
-              ? { image: logoBase64, width: 82, opacity: 0.1, absolutePosition: { x: 34, y: 560 } }
+              ? { image: logoBase64, width: 92, opacity: 0.08, absolutePosition: { x: 30, y: 558 } }
               : { text: '', absolutePosition: { x: 34, y: 560 } },
             firmaUnificadaBase64
-              ? { image: firmaUnificadaBase64, width: 124, opacity: 0.86, absolutePosition: { x: 12, y: 652 } }
+              ? { image: firmaUnificadaBase64, width: 138, opacity: 0.95, absolutePosition: { x: 6, y: 646 } }
               : { text: '', absolutePosition: { x: 18, y: 662 } },
           ];
         },
@@ -639,7 +655,7 @@ export default function TamikaERP() {
             { id: 'contabilidad', label: 'Contabilidad' },
             { id: 'reportes', label: 'Reportes' },
             { id: 'catalogos', label: 'Catálogos' },
-            ...(authUser?.rol === 'ADMIN' ? [{ id: 'auditoria', label: 'Auditoría' }] : []),
+            ...(authUser?.rol === 'ADMIN' ? [{ id: 'usuarios', label: 'Usuarios' }, { id: 'auditoria', label: 'Auditoría' }] : []),
           ].map((view) => (
             <button key={view.id} onClick={() => setActiveView(view.id)} className={`text-left px-4 py-3 rounded-lg font-medium ${activeView === view.id ? 'bg-slate-700 text-emerald-400' : 'hover:bg-slate-800 text-slate-300'}`}>{view.label}</button>
           ))}
@@ -669,6 +685,10 @@ export default function TamikaERP() {
 
         {activeView === 'reportes' && (
           <ReportesContablesView clientes={clientes} apiFetch={apiFetch} />
+        )}
+
+        {activeView === 'usuarios' && authUser?.rol === 'ADMIN' && (
+          <UsuariosView apiFetch={apiFetch} />
         )}
 
         {activeView === 'auditoria' && authUser?.rol === 'ADMIN' && (
@@ -774,29 +794,44 @@ export default function TamikaERP() {
              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                <h3 className="text-xs font-bold uppercase text-slate-500">Barra lateral del PDF</h3>
                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                 <div>
-                   <label className="text-xs font-bold text-slate-500">ID cliente</label>
-                   <input type="text" value={datosPdf.clienteCodigo} onChange={(e)=>updateDatosPdf('clienteCodigo', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
+                 <div className="md:col-span-2 xl:col-span-4">
+                   <label className="text-xs font-bold text-slate-500">Cliente para el PDF</label>
+                   <select value={clienteSelect} onChange={(e)=>handlePdfClienteChange(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
+                     <option value="">Consumidor Final / Sin cliente</option>
+                     {clientes.map((cli) => (
+                       <option key={cli.id} value={cli.id}>
+                         {cli.codigoCliente ? `${cli.codigoCliente} - ` : ''}{cli.nombre}{cli.rif ? ` (${cli.rif})` : ''}
+                       </option>
+                     ))}
+                   </select>
                  </div>
-                 <div>
-                   <label className="text-xs font-bold text-slate-500">Cliente</label>
-                   <input type="text" value={datosPdf.clienteNombre} onChange={(e)=>updateDatosPdf('clienteNombre', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
-                 </div>
-                 <div>
-                   <label className="text-xs font-bold text-slate-500">RIF cliente</label>
-                   <input type="text" value={datosPdf.clienteRif} onChange={(e)=>updateDatosPdf('clienteRif', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
-                 </div>
-                 <div className="md:col-span-2">
-                   <label className="text-xs font-bold text-slate-500">Dirección cliente</label>
-                   <textarea value={datosPdf.clienteDireccion} onChange={(e)=>updateDatosPdf('clienteDireccion', e.target.value)} rows={2} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none resize-y" />
-                 </div>
-                 <div>
-                   <label className="text-xs font-bold text-slate-500">Teléfono cliente</label>
-                   <input type="text" value={datosPdf.clienteTelefono} onChange={(e)=>updateDatosPdf('clienteTelefono', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
-                 </div>
-                 <div>
-                   <label className="text-xs font-bold text-slate-500">Email cliente</label>
-                   <input type="email" value={datosPdf.clienteEmail} onChange={(e)=>updateDatosPdf('clienteEmail', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
+                 <div className="md:col-span-2 xl:col-span-4 rounded-lg border border-slate-200 bg-white p-3">
+                   <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-3">
+                     <div>
+                       <p className="text-[11px] font-bold uppercase text-slate-400">ID</p>
+                       <p className="break-words font-semibold text-slate-800">{datosPdf.clienteCodigo || '-'}</p>
+                     </div>
+                     <div>
+                       <p className="text-[11px] font-bold uppercase text-slate-400">Cliente</p>
+                       <p className="break-words font-semibold text-slate-800">{datosPdf.clienteNombre || 'Consumidor Final'}</p>
+                     </div>
+                     <div>
+                       <p className="text-[11px] font-bold uppercase text-slate-400">RIF</p>
+                       <p className="break-words text-slate-700">{datosPdf.clienteRif || 'N/A'}</p>
+                     </div>
+                     <div className="md:col-span-3">
+                       <p className="text-[11px] font-bold uppercase text-slate-400">Dirección</p>
+                       <p className="whitespace-pre-wrap break-words text-slate-700">{datosPdf.clienteDireccion || '-'}</p>
+                     </div>
+                     <div>
+                       <p className="text-[11px] font-bold uppercase text-slate-400">Teléfono</p>
+                       <p className="break-words text-slate-700">{datosPdf.clienteTelefono || '-'}</p>
+                     </div>
+                     <div className="md:col-span-2">
+                       <p className="text-[11px] font-bold uppercase text-slate-400">Email</p>
+                       <p className="break-all text-slate-700">{datosPdf.clienteEmail || '-'}</p>
+                     </div>
+                   </div>
                  </div>
                  <div>
                    <label className="text-xs font-bold text-slate-500">Empresa</label>

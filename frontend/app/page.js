@@ -120,13 +120,31 @@ export default function TamikaERP() {
     return fetch(url, { ...options, headers });
   }, [authToken]);
 
+  const readApiResponse = async (res, fallbackMessage) => {
+    const text = await res.text();
+    if (!text) return {};
+
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      return {
+        error: res.ok
+          ? fallbackMessage
+          : 'El servidor no devolvio una respuesta valida. Revisa la conexion entre frontend y backend.',
+      };
+    }
+  };
+
   useEffect(() => {
     setIsMounted(true);
     const savedToken = localStorage.getItem('tamika_token') || '';
     if (!savedToken) {
       fetch('/api/auth/setup-status')
-        .then(res => res.json())
-        .then(data => setRequiresSetup(Boolean(data.requiresSetup)))
+        .then(async (res) => {
+          const data = await readApiResponse(res, 'No se pudo revisar la configuracion inicial.');
+          if (!res.ok) throw new Error(data.error || 'No se pudo revisar la configuracion inicial.');
+          setRequiresSetup(Boolean(data.requiresSetup));
+        })
         .catch(() => setRequiresSetup(false))
         .finally(() => setAuthLoading(false));
       return;
@@ -135,7 +153,7 @@ export default function TamikaERP() {
     setAuthToken(savedToken);
     fetch('/api/auth/me', { headers: { Authorization: `Bearer ${savedToken}` } })
       .then(async (res) => {
-        const data = await res.json();
+        const data = await readApiResponse(res, 'Sesion invalida.');
         if (!res.ok) throw new Error(data.error || 'Sesion invalida.');
         setAuthUser(data.user);
       })
@@ -216,7 +234,7 @@ export default function TamikaERP() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = await readApiResponse(res, 'No se pudo iniciar sesion.');
       if (!res.ok) throw new Error(data.error || 'No se pudo iniciar sesion.');
       guardarSesion(data);
     } catch (error) {

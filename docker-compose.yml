@@ -31,6 +31,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        API_INTERNAL_URL: http://backend:5000
     container_name: tamika_frontend
     restart: unless-stopped
     environment:

@@ -490,26 +490,26 @@ export default function TamikaERP() {
       });
       const headerRightBlock = {
         table: {
-          widths: [188],
+          widths: [205],
           body: [
             [{
               text: nombreDocumento,
-              fontSize: nombreDocumento.length > 10 ? 18 : 19,
+              fontSize: nombreDocumento.length > 10 ? 24.5 : 25.5,
               bold: true,
               color: '#333333',
               alignment: 'right',
-              margin: [0, 0, 0, 17],
+              margin: [0, 0, 0, 10],
             }],
             [{
               text: `Fecha: ${fechaPdf}`,
-              fontSize: 7,
+              fontSize: 9.2,
               color: '#555555',
               alignment: 'right',
-              margin: [0, 0, 0, 13],
+              margin: [0, 0, 0, 8],
             }],
             [{
               text: etiquetaNumeroPdf,
-              fontSize: 7,
+              fontSize: 9.2,
               bold: true,
               color: '#444444',
               alignment: 'right',
@@ -518,7 +518,7 @@ export default function TamikaERP() {
           ],
         },
         layout: 'noBorders',
-        absolutePosition: { x: 365, y: 50 },
+        absolutePosition: { x: 350, y: 45 },
       };
 
       const docDefinition = {

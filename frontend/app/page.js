@@ -426,7 +426,7 @@ export default function TamikaERP() {
 
       const tableBody = [
         [
-          { text: 'ITEM', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, alignment: 'center', margin: [4, 5], border: [false, false, false, false] },
+          { text: 'ITEM', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, alignment: 'center', margin: [2, 5], noWrap: true, border: [false, false, false, false] },
           { text: 'DESCRIPCIÓN DEL SERVICIO', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, margin: [4, 5], border: [false, false, false, false] },
           { text: 'CANT.', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, alignment: 'center', margin: [4, 5], border: [false, false, false, false] },
           { text: 'PRECIO UNID.', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, alignment: 'right', margin: [4, 5], border: [false, false, false, false] },
@@ -564,7 +564,7 @@ export default function TamikaERP() {
           {
             table: {
               headerRows: 1,
-              widths: [24, '*', 30, 58, 64],
+              widths: [34, '*', 30, 58, 64],
               body: tableBody
             },
             layout: 'noBorders', // Los bordes se manejan a nivel de celda

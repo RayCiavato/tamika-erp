@@ -2,7 +2,10 @@
   "name": "tamika-backend",
   "version": "1.0.0",
   "scripts": {
-    "start": "npx prisma db push && node src/index.js"
+    "start": "node src/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "prisma:deploy": "prisma migrate deploy"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",

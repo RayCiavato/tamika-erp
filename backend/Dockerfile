@@ -1,7 +1,7 @@
 FROM node:20-alpine
 WORKDIR /app
 
-# 1. Instalamos las librerías que Prisma necesita en Alpine Linux
+# 1. Instalamos las librerias que Prisma necesita en Alpine Linux
 RUN apk add --no-cache openssl libc6-compat
 
 COPY package*.json ./

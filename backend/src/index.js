@@ -21,12 +21,14 @@ const DOCUMENTO_ESTADOS = ['BORRADOR', 'APROBADO', 'CONVERTIDO', 'FACTURADO', 'A
 const TASA_FUENTES = ['BCV_API', 'MANUAL', 'CACHE', 'FALLBACK'];
 const MOVIMIENTO_CATEGORIAS = ['Servicio', 'Producto', 'Nomina', 'Pago de factura', 'Suscripcion', 'Otro'];
 const DEFAULT_BCV_API_URL = 'https://ve.dolarapi.com/v1/dolares/oficial';
+const DEFAULT_PARALELO_API_URL = 'https://ve.dolarapi.com/v1/dolares/paralelo';
 const BCV_API_TIMEOUT_MS = readPositiveNumber(process.env.BCV_API_TIMEOUT_MS, 5000);
 const BCV_API_CACHE_TTL_SECONDS = readPositiveNumber(process.env.BCV_API_CACHE_TTL_SECONDS, 3600);
 const JWT_SECRET = process.env.JWT_SECRET || 'tamika-dev-secret-change-me';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '8h';
 const USUARIO_ROLES = ['ADMIN', 'USUARIO'];
 let bcvCache = null;
+let paraleloCache = null;
 
 app.use(cors());
 app.use(express.json());
@@ -198,6 +200,21 @@ const fallbackTasaGuardada = async () => {
   };
 };
 
+const fallbackParaleloGuardado = async () => {
+  const tasa = await prisma.tasa.findFirst({ orderBy: { fecha: 'desc' } });
+  if (!tasa || !Number.isFinite(Number(tasa.paralelo)) || Number(tasa.paralelo) <= 0) return null;
+
+  return {
+    success: true,
+    tasa: Number(tasa.paralelo),
+    moneda: 'USD',
+    fuente: 'FALLBACK',
+    fecha: tasa.fecha,
+    cache: false,
+    message: 'Se uso la ultima tasa paralela guardada porque no se pudo obtener la tasa actual.',
+  };
+};
+
 const consultarTasaBcv = async () => {
   const now = Date.now();
   if (bcvCache && bcvCache.expiresAt > now) {
@@ -248,6 +265,99 @@ const consultarTasaBcv = async () => {
   } finally {
     clearTimeout(timeout);
   }
+};
+
+const consultarTasaParalelo = async () => {
+  const now = Date.now();
+  if (paraleloCache && paraleloCache.expiresAt > now) {
+    return {
+      ...paraleloCache.data,
+      fuente: 'CACHE',
+      cache: true,
+    };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), BCV_API_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(process.env.PARALELO_API_URL || DEFAULT_PARALELO_API_URL, { signal: controller.signal });
+    if (!response.ok) throw new Error('Respuesta invalida de la API paralelo.');
+
+    const payload = await response.json();
+    const tasa = extractPreferredNumber(payload);
+    if (!Number.isFinite(tasa) || tasa <= 0) throw new Error('Tasa paralelo invalida.');
+
+    const fecha = extractPreferredDate(payload) || new Date();
+    const data = {
+      success: true,
+      tasa: Number(tasa.toFixed(4)),
+      moneda: 'USD',
+      fuente: 'PARALELO_API',
+      fecha,
+      cache: false,
+    };
+
+    paraleloCache = {
+      data,
+      expiresAt: now + Math.max(BCV_API_CACHE_TTL_SECONDS, 0) * 1000,
+    };
+
+    return data;
+  } catch (error) {
+    const fallback = await fallbackParaleloGuardado();
+    if (fallback) return fallback;
+
+    return {
+      success: false,
+      message: 'No se pudo obtener la tasa paralela actual.',
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const mismaFechaIso = (a, b) => {
+  if (!a || !b) return false;
+  return new Date(a).toISOString().slice(0, 10) === new Date(b).toISOString().slice(0, 10);
+};
+
+const guardarTasasSincronizadas = async ({ bcv, paralelo }) => {
+  if (!Number.isFinite(bcv) || bcv <= 0 || !Number.isFinite(paralelo) || paralelo <= 0) return null;
+
+  const ultima = await prisma.tasa.findFirst({ orderBy: { fecha: 'desc' } });
+  const hoy = new Date();
+  const valoresIguales = ultima
+    && Math.abs(Number(ultima.bcv) - bcv) < 0.0001
+    && Math.abs(Number(ultima.paralelo) - paralelo) < 0.0001;
+
+  if (ultima && valoresIguales && mismaFechaIso(ultima.fecha, hoy)) return ultima;
+  return prisma.tasa.create({ data: { bcv, paralelo, fecha: hoy } });
+};
+
+const consultarTasasActuales = async () => {
+  const [bcvResult, paraleloResult] = await Promise.all([
+    consultarTasaBcv(),
+    consultarTasaParalelo(),
+  ]);
+
+  const ultima = await prisma.tasa.findFirst({ orderBy: { fecha: 'desc' } });
+  const bcv = Number(bcvResult?.tasa || ultima?.bcv || 0);
+  const paralelo = Number(paraleloResult?.tasa || ultima?.paralelo || 0);
+  const guardada = await guardarTasasSincronizadas({ bcv, paralelo });
+
+  return {
+    success: bcv > 0 && paralelo > 0,
+    bcv,
+    paralelo,
+    relacion: bcv > 0 && paralelo > 0 ? Number((bcv / paralelo).toFixed(4)) : 0,
+    fecha: guardada?.fecha || bcvResult?.fecha || paraleloResult?.fecha || new Date(),
+    bcvFecha: bcvResult?.fecha || guardada?.fecha || null,
+    paraleloFecha: paraleloResult?.fecha || guardada?.fecha || null,
+    fuenteBcv: bcvResult?.fuente || 'FALLBACK',
+    fuenteParalelo: paraleloResult?.fuente || 'FALLBACK',
+    messages: [bcvResult?.message, paraleloResult?.message].filter(Boolean),
+  };
 };
 
 const prefijoDocumento = (tipoDocumento) => (tipoDocumento === 'PRESUPUESTO' ? 'PRES' : 'PROP');
@@ -1166,6 +1276,14 @@ app.get('/api/tasas/bcv', async (req, res) => {
       success: false,
       message: 'No se pudo obtener la tasa BCV actual. Ingrese la tasa manualmente.',
     });
+  }
+});
+
+app.get('/api/tasas/actuales', async (req, res) => {
+  try {
+    res.json(await consultarTasasActuales());
+  } catch (error) {
+    serializeError(res, 500, 'No se pudieron sincronizar las tasas actuales.');
   }
 });
 

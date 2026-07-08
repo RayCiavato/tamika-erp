@@ -979,6 +979,7 @@ const registerStarlinkRoutes = (app, { prisma, logAudit, serializeError }) => {
             cuentaId: cuenta.id,
             cliente: cuenta.cliente,
             nombreCuenta: cuenta.nombreCuenta,
+            correoCuenta: cuenta.correoCuenta,
             cantidadAntenas: cuenta.antenas.length,
             fechaCorte,
             diasRestantes,

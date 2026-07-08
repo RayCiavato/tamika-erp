@@ -7,9 +7,10 @@ import ContabilidadView from './components/ContabilidadView';
 import ReportesContablesView from './components/ReportesContablesView';
 import AuditoriaView from './components/AuditoriaView';
 import UsuariosView from './components/UsuariosView';
+import StarlinkAlertModal from './components/StarlinkAlertModal';
 import CatalogosEnterpriseView from './modules/catalogos/CatalogosEnterpriseView';
-import StarlinkView from './modules/starlink/StarlinkView';
 import NominaView from './modules/nomina/NominaView';
+import StarlinkView from './modules/starlink/StarlinkView';
 const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
 import 'react-quill-new/dist/quill.snow.css';
 
@@ -33,6 +34,7 @@ const DEFAULT_PDF_DATA = {
 };
 
 const parseVe = (str) => { if (!str && str !== 0) return 0; if (typeof str === 'number') return str; return parseFloat(str.toString().replace(/\./g, '').replace(',', '.')) || 0; };
+const formatRateInput = (value) => Number(value || 0).toString().replace('.', ',');
 const formatUsd = (val) => currency(val, { symbol: '$', separator: '.', decimal: ',' }).format();
 const DOCUMENTO_OPTIONS = [
   { value: 'PROPUESTA', label: 'Propuesta' },
@@ -71,6 +73,7 @@ export default function TamikaERP() {
   const [isMounted, setIsMounted] = useState(false);
   const [activeView, setActiveView] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [openNavGroups, setOpenNavGroups] = useState({ productos: true, servicios: true });
   const [authToken, setAuthToken] = useState('');
   const [authUser, setAuthUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -87,6 +90,9 @@ export default function TamikaERP() {
   const [tasaBCV, setTasaBCV] = useState('');
   const [tasaParalelo, setTasaParalelo] = useState('');
   const [tasaBcvActual, setTasaBcvActual] = useState(null);
+  const [tasasActuales, setTasasActuales] = useState(null);
+  const [starlinkAlertas, setStarlinkAlertas] = useState([]);
+  const [showStarlinkAlertModal, setShowStarlinkAlertModal] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -259,15 +265,96 @@ export default function TamikaERP() {
     setActiveView('dashboard');
   };
 
+  const toggleNavGroup = (groupId) => {
+    setOpenNavGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
+
+  const aplicarTasasActuales = (data) => {
+    const bcv = Number(data?.bcv ?? data?.tasa ?? 0);
+    const paralelo = Number(data?.paralelo ?? 0);
+    const version = Date.now();
+
+    if (bcv > 0) setTasaBCV(formatRateInput(bcv));
+    if (paralelo > 0) setTasaParalelo(formatRateInput(paralelo));
+    if (bcv > 0 && paralelo > 0) handleGlobalChange('defRel', 'rel', (bcv / paralelo).toFixed(4).replace('.', ','));
+
+    setTasasActuales({
+      bcv,
+      paralelo,
+      relacion: bcv > 0 && paralelo > 0 ? Number((bcv / paralelo).toFixed(4)) : 0,
+      fecha: data?.fecha || data?.bcvFecha || new Date().toISOString(),
+      bcvFecha: data?.bcvFecha || data?.fecha || '',
+      paraleloFecha: data?.paraleloFecha || data?.fecha || '',
+      fuenteBcv: data?.fuenteBcv || data?.fuente || 'BCV_API',
+      fuenteParalelo: data?.fuenteParalelo || 'PARALELO_API',
+      version,
+    });
+
+    if (bcv > 0) {
+      setTasaBcvActual({
+        tasa: bcv,
+        fuente: data?.fuenteBcv || data?.fuente || 'BCV_API',
+        fecha: data?.bcvFecha || data?.fecha || '',
+        version,
+      });
+    }
+  };
+
+  const sincronizarTasasActuales = async ({ silent = false, showAlert = false } = {}) => {
+    try {
+      const res = await apiFetch('/api/tasas/actuales');
+      const data = await readApiResponse(res, 'No se pudieron sincronizar las tasas actuales.');
+      if (!res.ok || !data.success) throw new Error(data.error || data.message || 'No se pudieron sincronizar las tasas actuales.');
+      aplicarTasasActuales(data);
+      if (showAlert) alert('Tasas actualizadas.');
+      return data;
+    } catch (error) {
+      if (!silent) alert(error.message || 'Error API.');
+      return null;
+    }
+  };
+
+  const alertasStarlinkProximas = (alertas = []) => (
+    alertas.filter((alerta) => Number(alerta.diasRestantes) >= 0 && Number(alerta.diasRestantes) <= 10)
+  );
+
+  const cargarAlertasStarlink = async () => {
+    try {
+      const res = await apiFetch('/api/starlink/alertas');
+      const data = await readApiResponse(res, 'No se pudieron cargar las alertas Starlink.');
+      const alertas = Array.isArray(data?.alertas) ? data.alertas : [];
+      setStarlinkAlertas(alertas);
+
+      const proximas = alertasStarlinkProximas(alertas);
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const dismissedKey = `tamika_starlink_alerts_${todayKey}`;
+      if (proximas.length && localStorage.getItem(dismissedKey) !== '1') {
+        setShowStarlinkAlertModal(true);
+      }
+    } catch (error) {
+      setStarlinkAlertas([]);
+    }
+  };
+
+  const cerrarAlertasStarlink = () => {
+    const todayKey = new Date().toISOString().slice(0, 10);
+    localStorage.setItem(`tamika_starlink_alerts_${todayKey}`, '1');
+    setShowStarlinkAlertModal(false);
+  };
+
+  const abrirModuloStarlink = () => {
+    cerrarAlertasStarlink();
+    setActiveView('starlink');
+  };
+
   const cargarDatos = () => {
     apiFetch('/api/clientes').then(res => res.json()).then(data => setClientes(Array.isArray(data) ? data : []));
     apiFetch('/api/productos').then(res => res.json()).then(data => setProductos(Array.isArray(data) ? data : [])).catch(() => setProductos([]));
     apiFetch('/api/servicios').then(res => res.json()).then(data => setServicios(Array.isArray(data) ? data : [])).catch(() => setServicios([]));
     apiFetch('/api/propuestas').then(res => res.json()).then(data => setHistorialCoti(Array.isArray(data) ? data : []));
     if (!cotiEditandoId) cargarSiguienteCorrelativo(tipoDocumento);
-    apiFetch('/api/tasas').then(res => res.json()).then(data => {
-      if (data && data.bcv > 0) { setTasaBCV(data.bcv.toString().replace('.', ',')); setTasaParalelo(data.paralelo.toString().replace('.', ',')); setDefRel((data.bcv / data.paralelo).toFixed(4).replace('.', ',')); }
-    });
+    sincronizarTasasActuales({ silent: true });
+    cargarAlertasStarlink();
     setLoadingDashboard(true);
     apiFetch('/api/dashboard/resumen')
       .then(res => res.json())
@@ -277,23 +364,16 @@ export default function TamikaERP() {
   };
 
   const consultarApiTasas = async () => {
-    try {
-      const resBcv = await apiFetch('/api/tasas/bcv'); const dataBcv = await resBcv.json();
-      const resPar = await fetch('https://ve.dolarapi.com/v1/dolares/paralelo'); const dataPar = await resPar.json();
-      if (!resBcv.ok || !dataBcv.success || !dataBcv.tasa) throw new Error(dataBcv.message || 'No se pudo obtener la tasa BCV.');
-      const bcv = Number(dataBcv.tasa);
-      const paralelo = Number(dataPar.promedio || 0);
-      setTasaBCV(bcv.toString().replace('.', ',')); setTasaParalelo(paralelo.toString().replace('.', ','));
-      setTasaBcvActual({ tasa: bcv, fuente: dataBcv.fuente || 'BCV_API', fecha: dataBcv.fecha || '', version: Date.now() });
-      if (bcv > 0 && paralelo > 0) handleGlobalChange('defRel', 'rel', (bcv / paralelo).toFixed(4).replace('.', ','));
-      alert("Tasas actualizadas.");
-    } catch (e) { alert("Error API."); }
+    sincronizarTasasActuales({ showAlert: true });
   };
 
   const guardarTasaBD = async () => {
     if (parseVe(tasaBCV) <= 0) return alert("Valores inválidos.");
-    await apiFetch('/api/tasas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bcv: parseVe(tasaBCV), paralelo: parseVe(tasaParalelo) }) });
-    setTasaBcvActual({ tasa: parseVe(tasaBCV), fuente: 'MANUAL', fecha: new Date().toISOString(), version: Date.now() });
+    const bcv = parseVe(tasaBCV);
+    const paralelo = parseVe(tasaParalelo);
+    const fecha = new Date().toISOString();
+    await apiFetch('/api/tasas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bcv, paralelo }) });
+    aplicarTasasActuales({ bcv, paralelo, fecha, fuenteBcv: 'MANUAL', fuenteParalelo: 'MANUAL' });
     alert("Tasas guardadas.");
   };
 
@@ -547,35 +627,35 @@ export default function TamikaERP() {
       });
       const headerRightBlock = {
         table: {
-          widths: [205],
+          widths: [170],
           body: [
             [{
               text: nombreDocumento,
-              fontSize: nombreDocumento.length > 10 ? 23 : 24,
+              fontSize: nombreDocumento.length > 10 ? 22 : 23,
               bold: true,
-              color: '#333333',
-              alignment: 'right',
-              margin: [0, 0, 0, 8],
+              color: '#2f343b',
+              alignment: 'center',
+              margin: [0, 0, 0, 7],
             }],
             [{
               text: `Fecha: ${fechaPdf}`,
               fontSize: 8.5,
-              color: '#555555',
-              alignment: 'right',
+              color: '#4b5563',
+              alignment: 'center',
               margin: [0, 0, 0, 7],
             }],
             [{
               text: etiquetaNumeroPdf,
-              fontSize: 8.5,
+              fontSize: 8.2,
               bold: true,
-              color: '#444444',
-              alignment: 'right',
+              color: '#334155',
+              alignment: 'center',
               margin: [0, 0, 0, 0],
             }],
           ],
         },
         layout: 'noBorders',
-        absolutePosition: { x: 372, y: 47 },
+        absolutePosition: { x: 390, y: 38 },
       };
 
       const docDefinition = {
@@ -585,7 +665,7 @@ export default function TamikaERP() {
           return [
             {
               canvas: [
-                { type: 'rect', x: 12, y: 18, w: pageSize.width - 24, h: 108, color: '#d9d9d9' },
+                { type: 'rect', x: 12, y: 18, w: pageSize.width - 24, h: 108, color: '#d7dce1' },
                 { type: 'rect', x: 12, y: 132, w: 130, h: pageSize.height - 150, color: '#eeeeee' },
               ]
             },
@@ -593,8 +673,8 @@ export default function TamikaERP() {
               ? { image: logoBase64, width: 250, opacity: 0.045, absolutePosition: { x: 248, y: 300 } }
               : { text: '', absolutePosition: { x: 250, y: 300 } },
             { image: logoBase64 || transparentPixel, width: 66, absolutePosition: { x: 22, y: 31 } },
-            { text: 'Servicios\nTamika 0302,C.A', fontSize: 20, bold: true, color: '#333333', lineHeight: 0.84, absolutePosition: { x: 92, y: 35 } },
-            { text: 'RIF.: J-50634330-4', fontSize: 12, color: '#444444', absolutePosition: { x: 95, y: 92 } },
+            { text: 'Servicios\nTamika 0302,C.A', fontSize: 20, bold: true, color: '#2f343b', lineHeight: 0.84, absolutePosition: { x: 92, y: 35 } },
+            { text: 'RIF.: J-50634330-4', fontSize: 12, color: '#334155', absolutePosition: { x: 95, y: 92 } },
             headerRightBlock,
             sidebarSection('CLIENTE', sidebarCliente, 158),
             sidebarSection('EMPRESA', sidebarEmpresa, 326),
@@ -684,8 +764,8 @@ export default function TamikaERP() {
   if (authLoading) return <div className="grid min-h-screen place-items-center bg-slate-950 text-sm font-semibold text-white">Cargando TAMIKA ERP...</div>;
   if (!authUser) {
     return (
-      <div className="grid min-h-screen place-items-center bg-slate-950 p-4 text-slate-900">
-        <form onSubmit={handleAuthSubmit} className="w-full max-w-md rounded-xl border border-slate-700 bg-white p-6 shadow-2xl">
+      <div className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top_left,_#e0f2fe,_#f4f7fb_36%,_#111827_120%)] p-4 text-slate-900">
+        <form onSubmit={handleAuthSubmit} className="enterprise-surface w-full max-w-md rounded-xl p-6">
           <div className="mb-6 flex items-center gap-3">
             <div className="grid h-11 w-11 place-items-center overflow-hidden rounded-xl border border-slate-200 bg-white">
               <img src="/logo.png" alt="" className="h-9 w-9 object-contain" />
@@ -710,7 +790,7 @@ export default function TamikaERP() {
             <input required type="password" minLength={8} value={loginForm.password} onChange={(e) => setLoginForm((prev) => ({ ...prev, password: e.target.value }))} className="input mt-1" />
           </label>
           {loginError && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{loginError}</div>}
-          <button className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-extrabold text-white shadow hover:bg-emerald-500">
+          <button className="btn-enterprise w-full">
             {requiresSetup ? 'Crear administrador' : 'Entrar'}
           </button>
         </form>
@@ -722,21 +802,40 @@ export default function TamikaERP() {
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'cotizacion', label: 'Propuestas', icon: '📝' },
     { id: 'contabilidad', label: 'Contabilidad', icon: '💼' },
-    { id: 'productos', label: 'Productos', icon: '📦' },
-    { id: 'servicios', label: 'Servicios', icon: '🧰' },
-    { id: 'starlink', label: 'Starlink', icon: '🛰️' },
-    { id: 'nomina', label: 'Nómina', icon: '👷' },
+    {
+      id: 'productos',
+      label: 'Productos',
+      icon: '📦',
+      children: [
+        { id: 'productos', label: 'Productos', icon: '📦' },
+      ],
+    },
+    {
+      id: 'servicios',
+      label: 'Servicios',
+      icon: '🧰',
+      children: [
+        { id: 'servicios', label: 'Servicios', icon: '🧰' },
+        { id: 'nomina', label: 'Nómina', icon: '👷' },
+      ],
+    },
     { id: 'reportes', label: 'Reportes', icon: '📑' },
     { id: 'catalogos', label: 'Catálogos', icon: '🗂️' },
     ...(authUser?.rol === 'ADMIN' ? [{ id: 'usuarios', label: 'Usuarios', icon: '👥' }, { id: 'auditoria', label: 'Auditoría', icon: '🛡️' }] : []),
   ];
+  const productosNav = navItems.find((item) => item.id === 'productos');
+  if (productosNav?.children && !productosNav.children.some((child) => child.id === 'starlink')) {
+    productosNav.children.push({ id: 'starlink', label: 'Starlink', icon: 'SL' });
+  }
+
+  const isNavItemActive = (view) => view.id === activeView || view.children?.some((child) => child.id === activeView);
   const userInitial = authUser?.nombre?.trim()?.charAt(0)?.toUpperCase() || 'U';
 
   return (
-    <div className="flex min-h-screen flex-col font-sans bg-slate-50 text-slate-900 lg:flex-row">
-      <aside className={`z-10 flex w-full flex-col gap-4 bg-slate-900 p-5 text-slate-100 shadow-xl transition-all duration-300 lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:overflow-y-auto ${sidebarCollapsed ? 'lg:w-20 lg:p-4' : 'lg:w-80 lg:p-5'}`}>
+    <div className="flex min-h-screen flex-col font-sans bg-[var(--tamika-bg)] text-slate-900 lg:flex-row">
+      <aside className={`z-10 flex w-full flex-col gap-4 bg-[var(--tamika-sidebar)] p-5 text-slate-100 shadow-xl transition-all duration-300 lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:overflow-y-auto ${sidebarCollapsed ? 'lg:w-20 lg:p-4' : 'lg:w-80 lg:p-5'}`}>
         <div className={`mb-4 flex items-center gap-3 ${sidebarCollapsed ? 'lg:flex-col lg:justify-center lg:gap-3' : ''}`}>
-          <div className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl border border-slate-700 bg-white">
+          <div className="grid h-10 w-10 place-items-center overflow-hidden rounded-xl border border-white/10 bg-white shadow-sm">
             <img src="/logo.png" alt="" className="h-8 w-8 object-contain" />
           </div>
           <div className={sidebarCollapsed ? 'lg:hidden' : ''}><h1 className="text-lg font-bold leading-tight">TAMIKA ERP</h1></div>
@@ -745,7 +844,7 @@ export default function TamikaERP() {
             onClick={() => setSidebarCollapsed((prev) => !prev)}
             title={sidebarCollapsed ? 'Expandir menú' : 'Plegar menú'}
             aria-label={sidebarCollapsed ? 'Expandir menú' : 'Plegar menú'}
-            className={`ml-auto grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 ${sidebarCollapsed ? 'lg:ml-0' : ''}`}
+            className={`ml-auto grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 ${sidebarCollapsed ? 'lg:ml-0' : ''}`}
           >
             <span className="sr-only">{sidebarCollapsed ? 'Expandir menú' : 'Plegar menú'}</span>
             <span className="flex flex-col gap-1">
@@ -756,22 +855,68 @@ export default function TamikaERP() {
           </button>
         </div>
         <nav className={`flex flex-col gap-2 ${sidebarCollapsed ? 'lg:items-center' : ''}`}>
-          {navItems.map((view) => (
-            <button
-              key={view.id}
-              onClick={() => setActiveView(view.id)}
-              title={sidebarCollapsed ? view.label : undefined}
-              aria-label={view.label}
-              className={`rounded-lg px-4 py-3 text-left font-medium transition-colors ${sidebarCollapsed ? 'lg:grid lg:h-11 lg:w-11 lg:place-items-center lg:px-0 lg:py-0 lg:text-center' : ''} ${activeView === view.id ? 'bg-slate-700 text-emerald-400' : 'hover:bg-slate-800 text-slate-300'}`}
-            >
-              <span className={sidebarCollapsed ? 'lg:hidden' : ''}>{view.label}</span>
-              <span className={sidebarCollapsed ? 'hidden text-xl leading-none lg:block' : 'hidden'} aria-hidden="true">{view.icon}</span>
-            </button>
-          ))}
+          {navItems.map((view) => {
+            const active = isNavItemActive(view);
+            const isGroup = Array.isArray(view.children);
+            const groupOpen = openNavGroups[view.id] || active;
+
+            if (isGroup) {
+              return (
+                <div key={view.id} className={`min-w-0 ${sidebarCollapsed ? 'lg:w-11' : ''}`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (sidebarCollapsed) {
+                        setActiveView(view.children[0].id);
+                        return;
+                      }
+                      toggleNavGroup(view.id);
+                    }}
+                    title={sidebarCollapsed ? view.label : undefined}
+                    aria-label={view.label}
+                    aria-expanded={groupOpen}
+                    className={`flex w-full items-center justify-between gap-2 rounded-lg px-4 py-3 text-left font-medium transition-colors ${sidebarCollapsed ? 'lg:grid lg:h-11 lg:w-11 lg:place-items-center lg:px-0 lg:py-0 lg:text-center' : ''} ${active ? 'bg-teal-500/15 text-teal-200 ring-1 ring-teal-400/30' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`}
+                  >
+                    <span className={sidebarCollapsed ? 'lg:hidden' : ''}>{view.label}</span>
+                    <span className={sidebarCollapsed ? 'hidden text-xl leading-none lg:block' : 'hidden'} aria-hidden="true">{view.icon}</span>
+                    <span className={`text-xs transition-transform ${groupOpen ? 'rotate-90' : ''} ${sidebarCollapsed ? 'lg:hidden' : ''}`} aria-hidden="true">›</span>
+                  </button>
+                  {groupOpen && (
+                    <div className={`mt-1 space-y-1 border-l border-white/10 pl-3 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
+                      {view.children.map((child) => (
+                        <button
+                          key={child.id}
+                          type="button"
+                          onClick={() => setActiveView(child.id)}
+                          className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-semibold transition-colors ${activeView === child.id ? 'bg-white/10 text-teal-100' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+                        >
+                          <span className="text-base leading-none" aria-hidden="true">{child.icon}</span>
+                          <span>{child.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            return (
+              <button
+                key={view.id}
+                onClick={() => setActiveView(view.id)}
+                title={sidebarCollapsed ? view.label : undefined}
+                aria-label={view.label}
+                className={`rounded-lg px-4 py-3 text-left font-medium transition-colors ${sidebarCollapsed ? 'lg:grid lg:h-11 lg:w-11 lg:place-items-center lg:px-0 lg:py-0 lg:text-center' : ''} ${active ? 'bg-teal-500/15 text-teal-200 ring-1 ring-teal-400/30' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`}
+              >
+                <span className={sidebarCollapsed ? 'lg:hidden' : ''}>{view.label}</span>
+                <span className={sidebarCollapsed ? 'hidden text-xl leading-none lg:block' : 'hidden'} aria-hidden="true">{view.icon}</span>
+              </button>
+            );
+          })}
         </nav>
-        <div className={`rounded-xl border border-slate-700 bg-slate-800 p-4 text-sm ${sidebarCollapsed ? 'lg:p-2' : ''}`}>
+        <div className={`rounded-xl border border-white/10 bg-white/5 p-4 text-sm ${sidebarCollapsed ? 'lg:p-2' : ''}`}>
           <div className={sidebarCollapsed ? 'lg:grid lg:place-items-center' : ''}>
-            <div className={sidebarCollapsed ? 'hidden h-10 w-10 place-items-center rounded-full bg-slate-700 text-sm font-extrabold text-emerald-300 lg:grid' : 'hidden'}>{userInitial}</div>
+            <div className={sidebarCollapsed ? 'hidden h-10 w-10 place-items-center rounded-full bg-teal-500/15 text-sm font-extrabold text-teal-200 lg:grid' : 'hidden'}>{userInitial}</div>
             <div className={sidebarCollapsed ? 'lg:hidden' : ''}>
               <p className="font-bold text-white">{authUser.nombre}</p>
               <p className="break-all text-xs text-slate-400">{authUser.email}</p>
@@ -781,7 +926,7 @@ export default function TamikaERP() {
             onClick={logout}
             title="Salir"
             aria-label="Salir"
-            className={`mt-3 w-full rounded-lg bg-slate-700 px-3 py-2 text-xs font-bold text-white hover:bg-slate-600 ${sidebarCollapsed ? 'lg:grid lg:h-10 lg:w-10 lg:place-items-center lg:px-0 lg:py-0' : ''}`}
+            className={`mt-3 w-full rounded-lg bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15 ${sidebarCollapsed ? 'lg:grid lg:h-10 lg:w-10 lg:place-items-center lg:px-0 lg:py-0' : ''}`}
           >
             <span className={sidebarCollapsed ? 'lg:hidden' : ''}>Salir</span>
             <svg className={sidebarCollapsed ? 'hidden h-4 w-4 lg:block' : 'hidden'} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -791,9 +936,9 @@ export default function TamikaERP() {
             </svg>
           </button>
         </div>
-        <div className={`bg-slate-800 rounded-xl p-4 mt-6 border border-slate-700 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
+        <div className={`mt-6 rounded-xl border border-white/10 bg-white/5 p-4 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
           <h3 className="text-sm font-bold text-white mb-3">Tasas del Día</h3>
-          <div className="flex gap-2 mb-3"><button onClick={consultarApiTasas} className="flex-1 bg-indigo-600 text-white text-xs py-1 rounded shadow">API</button><button onClick={guardarTasaBD} className="flex-1 bg-emerald-600 text-white text-xs py-1 rounded shadow">Guardar</button></div>
+          <div className="flex gap-2 mb-3"><button onClick={consultarApiTasas} className="flex-1 rounded bg-cyan-700 py-1 text-xs text-white shadow">API</button><button onClick={guardarTasaBD} className="flex-1 rounded bg-teal-700 py-1 text-xs text-white shadow">Guardar</button></div>
           <div className="space-y-3">
             <div><label className="text-xs text-slate-400">BCV</label><input type="text" value={tasaBCV} onChange={(e) => handleTasasChange('bcv', e.target.value)} className="w-full bg-slate-700 text-white border-none rounded px-3 py-2 text-sm outline-none mt-1" /></div>
             <div><label className="text-xs text-slate-400">Paralelo</label><input type="text" value={tasaParalelo} onChange={(e) => handleTasasChange('par', e.target.value)} className="w-full bg-slate-700 text-white border-none rounded px-3 py-2 text-sm outline-none mt-1" /></div>
@@ -803,7 +948,16 @@ export default function TamikaERP() {
       </aside>
 
       <main className="relative min-w-0 flex-1 space-y-6 p-4 sm:p-6 lg:p-8">
-        {activeView === 'dashboard' && (<DashboardView resumen={dashboardResumen} loading={loadingDashboard} apiFetch={apiFetch} />)}
+        {activeView === 'dashboard' && (
+          <DashboardView
+            resumen={dashboardResumen}
+            loading={loadingDashboard}
+            apiFetch={apiFetch}
+            tasasActuales={tasasActuales}
+            starlinkAlertas={starlinkAlertas}
+            onOpenStarlink={() => setActiveView('starlink')}
+          />
+        )}
 
         {activeView === 'contabilidad' && (
           <ContabilidadView clientes={clientes} onChanged={cargarDatos} tasaBcvActual={tasaBcvActual} apiFetch={apiFetch} />
@@ -814,15 +968,15 @@ export default function TamikaERP() {
         )}
 
         {activeView === 'productos' && (
-          <CatalogosEnterpriseView apiFetch={apiFetch} initialTab="productos" />
-        )}
-
-        {activeView === 'servicios' && (
-          <CatalogosEnterpriseView apiFetch={apiFetch} initialTab="servicios" />
+          <CatalogosEnterpriseView apiFetch={apiFetch} clientes={clientes} initialTab="productos" onChanged={cargarDatos} tasaBcvActual={tasaBcvActual} />
         )}
 
         {activeView === 'starlink' && (
-          <StarlinkView clientes={clientes} apiFetch={apiFetch} onChanged={cargarDatos} />
+          <StarlinkView apiFetch={apiFetch} clientes={clientes} onChanged={cargarDatos} />
+        )}
+
+        {activeView === 'servicios' && (
+          <CatalogosEnterpriseView apiFetch={apiFetch} clientes={clientes} initialTab="servicios" onChanged={cargarDatos} tasaBcvActual={tasaBcvActual} />
         )}
 
         {activeView === 'nomina' && (
@@ -869,7 +1023,6 @@ export default function TamikaERP() {
                 </table>
               </div>
             </section>
-            <CatalogosEnterpriseView apiFetch={apiFetch} initialTab="servicios" compact />
           </div>
         )}
 
@@ -1087,6 +1240,14 @@ export default function TamikaERP() {
            </section>
         )}
       </main>
+
+      {showStarlinkAlertModal && (
+        <StarlinkAlertModal
+          alertas={starlinkAlertas}
+          onClose={cerrarAlertasStarlink}
+          onOpenStarlink={abrirModuloStarlink}
+        />
+      )}
 
       {/* MODAL BUSQUEDA */}
       {showModal && (

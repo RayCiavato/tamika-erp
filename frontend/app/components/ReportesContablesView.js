@@ -65,7 +65,7 @@ const filterValue = (filters, clientes, field) => {
 };
 
 export default function ReportesContablesView({ clientes = [], apiFetch }) {
-  const [filters, setFilters] = useState({ desde: '', hasta: '', tipo: '', estado: '', clienteId: '', proveedorId: '', buscar: '' });
+  const [filters, setFilters] = useState({ desde: '', hasta: '', tipo: '', estado: '', clienteId: '', buscar: '' });
   const [reporte, setReporte] = useState(null);
   const [loading, setLoading] = useState(false);
   const [mensaje, setMensaje] = useState('');
@@ -136,7 +136,7 @@ export default function ReportesContablesView({ clientes = [], apiFetch }) {
           ? section.items.map((mov) => [
             bodyCell(formatDate(mov.fechaMovimiento)),
             bodyCell(mov.concepto || '-'),
-            bodyCell(mov.referencia || mov.cliente?.nombre || mov.proveedorId || '-'),
+            bodyCell(mov.referencia || mov.cliente?.nombre || '-'),
             bodyCell(mov.estado || '-'),
             bodyCell(formatUsd(mov.montoUsd), 'right', true),
             bodyCell(mov.tasaBcv || '-', 'right'),
@@ -224,9 +224,9 @@ export default function ReportesContablesView({ clientes = [], apiFetch }) {
                 ],
                 [
                   filterCell('Cliente', filterValue(filters, clientes, 'clienteId')),
-                  filterCell('Proveedor', filters.proveedorId || 'Todos'),
                   filterCell('Búsqueda', filters.buscar || 'Sin búsqueda'),
                   filterCell('Moneda', 'USD / Bs'),
+                  filterCell('Módulo', 'Contabilidad'),
                 ],
               ],
             },
@@ -299,7 +299,6 @@ export default function ReportesContablesView({ clientes = [], apiFetch }) {
             <option value="">Todos los clientes</option>
             {clientes.map((cliente) => <option key={cliente.id} value={cliente.id}>{cliente.codigoCliente ? `${cliente.codigoCliente} - ` : ''}{cliente.nombre}</option>)}
           </select></Field>
-          <Field label="Proveedor"><input placeholder="Proveedor" value={filters.proveedorId} onChange={(e) => updateFilter('proveedorId', e.target.value)} className="input" /></Field>
           <Field label="Búsqueda"><input placeholder="Concepto, referencia..." value={filters.buscar} onChange={(e) => updateFilter('buscar', e.target.value)} className="input" /></Field>
           <div className="flex items-end">
             <button className="w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">Filtrar</button>
@@ -387,7 +386,7 @@ function ReportSection({ section }) {
               <tr key={`${section.key}-${mov.id}`} className="border-t align-top hover:bg-slate-50">
                 <td className="p-3 text-slate-500">{formatDate(mov.fechaMovimiento)}</td>
                 <td className="p-3 font-semibold text-slate-900">{mov.concepto}</td>
-                <td className="p-3 text-slate-600">{mov.referencia || mov.cliente?.nombre || mov.proveedorId || '-'}</td>
+                <td className="p-3 text-slate-600">{mov.referencia || mov.cliente?.nombre || '-'}</td>
                 <td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${estadoStyles[mov.estado] || 'bg-slate-100 text-slate-700'}`}>{mov.estado}</span></td>
                 <td className="p-3 text-right font-bold tabular-nums">{formatUsd(mov.montoUsd)}</td>
                 <td className="p-3 text-right">{mov.tasaBcv || '-'}</td>

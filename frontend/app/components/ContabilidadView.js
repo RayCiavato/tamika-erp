@@ -71,7 +71,6 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
   const [loadingTasa, setLoadingTasa] = useState(false);
   const [tasaMensaje, setTasaMensaje] = useState('');
   const [filters, setFilters] = useState({ tipo: '', estado: '', buscar: '', desde: '', hasta: '' });
-  const [proveedores, setProveedores] = useState([]);
   const [productos, setProductos] = useState([]);
   const [servicios, setServicios] = useState([]);
   const [tiposProducto, setTiposProducto] = useState([]);
@@ -82,6 +81,11 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
     const tasa = Number(form.tasaBcv || 0);
     return monto > 0 && tasa > 0 ? monto * tasa : 0;
   }, [form.montoUsd, form.tasaBcv]);
+  const clienteSeleccionado = useMemo(
+    () => clientes.find((cliente) => cliente.id === form.clienteId),
+    [clientes, form.clienteId],
+  );
+  const codigoClienteAsociado = clienteSeleccionado?.codigoCliente || clienteSeleccionado?.id || '';
 
   const cargarMovimientos = async () => {
     setLoading(true);
@@ -106,21 +110,18 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
 
   const cargarCatalogos = async () => {
     try {
-      const [proveedoresRes, productosRes, serviciosRes, tiposProductoRes, tiposServicioRes] = await Promise.all([
-        apiFetch('/api/proveedores'),
+      const [productosRes, serviciosRes, tiposProductoRes, tiposServicioRes] = await Promise.all([
         apiFetch('/api/productos'),
         apiFetch('/api/servicios'),
         apiFetch('/api/tipos-producto'),
         apiFetch('/api/tipos-servicio'),
       ]);
-      const [proveedoresData, productosData, serviciosData, tiposProductoData, tiposServicioData] = await Promise.all([
-        proveedoresRes.json().catch(() => []),
+      const [productosData, serviciosData, tiposProductoData, tiposServicioData] = await Promise.all([
         productosRes.json().catch(() => []),
         serviciosRes.json().catch(() => []),
         tiposProductoRes.json().catch(() => []),
         tiposServicioRes.json().catch(() => []),
       ]);
-      setProveedores(Array.isArray(proveedoresData) ? proveedoresData : []);
       setProductos(Array.isArray(productosData) ? productosData : []);
       setServicios(Array.isArray(serviciosData) ? serviciosData : []);
       setTiposProducto(Array.isArray(tiposProductoData) ? tiposProductoData : []);
@@ -220,7 +221,6 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
       tipoServicioId: value === 'Servicio' || value === 'Suscripcion' ? prev.tipoServicioId : '',
     }));
   };
-  const seleccionarProveedor = (id) => setForm((prev) => ({ ...prev, proveedorId: id }));
   const seleccionarProducto = (id) => {
     const producto = productos.find((item) => item.id === id);
     setForm((prev) => ({
@@ -414,17 +414,15 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
             <Field label="Cliente" className="sm:col-span-2">
               <select value={form.clienteId} onChange={(e) => updateForm('clienteId', e.target.value)} className="input">
                 <option value="">Sin cliente asociado</option>
-                {clientes.map((cliente) => <option key={cliente.id} value={cliente.id}>{cliente.nombre}</option>)}
-              </select>
-            </Field>
-            <Field label="Proveedor" className="sm:col-span-2">
-              <select value={form.proveedorId} onChange={(e) => seleccionarProveedor(e.target.value)} className="input">
-                <option value="">Sin proveedor asociado</option>
-                {proveedores.filter((proveedor) => proveedor.activo).map((proveedor) => (
-                  <option key={proveedor.id} value={proveedor.id}>{proveedor.codigoProveedor ? `${proveedor.codigoProveedor} - ` : ''}{proveedor.nombre}{proveedor.rif ? ` (${proveedor.rif})` : ''}</option>
+                {clientes.map((cliente) => (
+                  <option key={cliente.id} value={cliente.id}>
+                    {cliente.codigoCliente ? `${cliente.codigoCliente} - ` : ''}{cliente.nombre}
+                  </option>
                 ))}
               </select>
-              <p className="mt-1 text-[11px] text-slate-400">El código/ID se carga automáticamente al seleccionar proveedor.</p>
+            </Field>
+            <Field label="Código cliente" className="sm:col-span-2">
+              <input readOnly value={codigoClienteAsociado || '-'} className="input bg-slate-100 font-mono text-xs text-slate-500" />
             </Field>
             <Field label="Categoria">
               <select value={form.categoria} onChange={(e) => updateCategoria(e.target.value)} className="input">
@@ -471,9 +469,6 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
                 </Field>
               </>
             )}
-            <Field label="ID técnico asociado" className="sm:col-span-2">
-              <input readOnly value={form.productoId || form.servicioId || form.proveedorId || '-'} className="input bg-slate-100 font-mono text-xs text-slate-500" />
-            </Field>
           </div>
 
           <button type="submit" className="mt-5 w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-extrabold text-white shadow hover:bg-emerald-500">
@@ -522,7 +517,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
                       <p className="text-xs text-slate-500">{TIPOS.find((t) => t.value === mov.tipo)?.label || mov.tipo}{mov.categoria ? ` · ${mov.categoria}` : ''}</p>
                       {(mov.producto || mov.servicio) && <p className="text-xs font-semibold text-indigo-600">{mov.producto?.nombre || mov.servicio?.nombre}</p>}
                     </td>
-                    <td className="p-3 text-slate-600">{mov.cliente?.nombre || mov.referencia || proveedores.find((proveedor) => proveedor.id === mov.proveedorId)?.nombre || mov.proveedorId || '-'}</td>
+                    <td className="p-3 text-slate-600">{mov.cliente?.nombre || mov.referencia || mov.producto?.nombre || mov.servicio?.nombre || '-'}</td>
                     <td className="p-3 whitespace-nowrap"><span className={`rounded-full px-2 py-1 text-xs font-bold ${estadoStyles[mov.estado] || 'bg-slate-100 text-slate-700'}`}>{mov.estado}</span></td>
                     <td className="p-3 text-right">
                       <p className="font-extrabold">{formatUsd(mov.montoUsd)}</p>

@@ -4,7 +4,6 @@ Pantallas para administrar catalogos enterprise mediante API:
 
 - Servicios.
 - Productos.
-- Proveedores.
 - Tipos de servicio.
 - Tipos de producto.
 

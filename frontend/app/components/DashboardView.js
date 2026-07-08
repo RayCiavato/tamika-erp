@@ -4,6 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import currency from 'currency.js';
 
 const formatUsd = (value) => currency(value || 0, { symbol: '$', separator: '.', decimal: ',' }).format();
+const formatRate = (value) => Number(value || 0) > 0
+  ? currency(value, { symbol: 'Bs ', separator: '.', decimal: ',' }).format()
+  : 'Sin tasa';
+const formatRateDate = (value) => (value ? new Date(value).toLocaleDateString('es-VE', { timeZone: 'UTC' }) : 'Sin fecha');
+const formatDate = (value) => (value ? new Date(value).toLocaleDateString('es-VE', { timeZone: 'UTC' }) : 'Sin fecha');
 
 const tipoLabel = {
   INGRESO: 'Ingreso',
@@ -63,7 +68,7 @@ const valueSizeClass = (value, compact = false) => {
   return 'text-3xl';
 };
 
-export default function DashboardView({ resumen, loading, apiFetch }) {
+export default function DashboardView({ resumen, loading, apiFetch, tasasActuales, starlinkAlertas = [], onOpenStarlink }) {
   const kpis = resumen?.kpis || {};
   const ultimosMovimientos = resumen?.ultimosMovimientos || [];
   const [periodo, setPeriodo] = useState('mensual');
@@ -106,6 +111,14 @@ export default function DashboardView({ resumen, loading, apiFetch }) {
       </div>
 
       {loading && <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">Cargando indicadores...</div>}
+
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <RateCard title="BCV del día" value={formatRate(tasasActuales?.bcv)} detail={`${tasasActuales?.fuenteBcv || 'Sin fuente'} · ${formatRateDate(tasasActuales?.bcvFecha || tasasActuales?.fecha)}`} tone="emerald" />
+        <RateCard title="Paralelo" value={formatRate(tasasActuales?.paralelo)} detail={`${tasasActuales?.fuenteParalelo || 'Sin fuente'} · ${formatRateDate(tasasActuales?.paraleloFecha || tasasActuales?.fecha)}`} tone="indigo" />
+        <RateCard title="Relación BCV/Paralelo" value={tasasActuales?.relacion ? tasasActuales.relacion.toString().replace('.', ',') : 'Sin tasa'} detail="Usada como referencia comercial." tone="slate" />
+      </section>
+
+      <StarlinkDashboardCard alertas={starlinkAlertas} onOpenStarlink={onOpenStarlink} />
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <KpiCard title="Balance actual" value={formatUsd(kpis.balanceActual)} detail="Ingresos reales menos egresos reales." tone={balanceTone} featured />
@@ -210,6 +223,73 @@ export default function DashboardView({ resumen, loading, apiFetch }) {
   );
 }
 
+function StarlinkDashboardCard({ alertas = [], onOpenStarlink }) {
+  const proximas = alertas
+    .filter((alerta) => Number(alerta.diasRestantes) >= 0 && Number(alerta.diasRestantes) <= 10)
+    .sort((a, b) => Number(a.diasRestantes) - Number(b.diasRestantes));
+  const hoy = proximas.filter((alerta) => Number(alerta.diasRestantes) === 0);
+  const vencidas = alertas.filter((alerta) => Number(alerta.diasRestantes) < 0);
+  const top = proximas.slice(0, 4);
+
+  return (
+    <section className="rounded-lg border border-cyan-200 bg-cyan-50/40 p-5 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-extrabold uppercase text-cyan-700">Starlink</p>
+          <h3 className="text-lg font-extrabold text-slate-950">Cortes y alertas operativas</h3>
+          <p className="text-sm text-slate-500">Seguimiento de cuentas que vencen hoy o dentro de los próximos 10 días.</p>
+        </div>
+        <button type="button" onClick={onOpenStarlink} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-extrabold text-white shadow hover:bg-slate-800">
+          Ver módulo
+        </button>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+        <SmallAlertMetric title="Vencen hoy" value={hoy.length} tone="amber" />
+        <SmallAlertMetric title="Próximas" value={proximas.length} tone="cyan" />
+        <SmallAlertMetric title="Vencidas" value={vencidas.length} tone="red" />
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {top.map((alerta) => (
+          <div key={alerta.cuentaId} className="rounded-lg border border-white bg-white/80 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-extrabold text-slate-950">{alerta.nombreCuenta}</p>
+                <p className="truncate text-xs text-slate-500">{alerta.cliente?.nombre || 'Sin cliente'} / {alerta.correoCuenta || 'Sin correo'}</p>
+              </div>
+              <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-extrabold ${Number(alerta.diasRestantes) === 0 ? 'bg-amber-100 text-amber-800' : 'bg-cyan-100 text-cyan-800'}`}>
+                {Number(alerta.diasRestantes) === 0 ? 'Hoy' : `${alerta.diasRestantes} días`}
+              </span>
+            </div>
+            <p className="mt-2 text-xs font-semibold text-slate-500">Corte: {formatDate(alerta.fechaCorte)}</p>
+          </div>
+        ))}
+        {!top.length && (
+          <div className="rounded-lg border border-dashed border-cyan-200 bg-white/70 p-4 text-sm font-semibold text-slate-500 lg:col-span-2">
+            No hay cortes próximos dentro de los próximos 10 días.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function SmallAlertMetric({ title, value, tone }) {
+  const styles = {
+    amber: 'bg-amber-50 text-amber-800 border-amber-200',
+    cyan: 'bg-cyan-50 text-cyan-800 border-cyan-200',
+    red: 'bg-red-50 text-red-800 border-red-200',
+  };
+
+  return (
+    <div className={`rounded-lg border p-3 ${styles[tone] || styles.cyan}`}>
+      <p className="text-xs font-extrabold uppercase opacity-70">{title}</p>
+      <p className="mt-1 text-2xl font-extrabold tabular-nums">{value}</p>
+    </div>
+  );
+}
+
 function ChartBar({ label, value, max, tone }) {
   const safeValue = Math.abs(Number(value || 0));
   const width = Math.max(safeValue > 0 ? 4 : 0, Math.round((safeValue / max) * 100));
@@ -222,6 +302,23 @@ function ChartBar({ label, value, max, tone }) {
         <div className={`h-full rounded ${tone}`} style={{ width: `${width}%` }} />
       </div>
       <span className={`${valueSizeClass(formatted, true)} text-right font-bold leading-none text-slate-700 tabular-nums`}>{formatted}</span>
+    </div>
+  );
+}
+
+function RateCard({ title, value, detail, tone = 'slate' }) {
+  const styles = toneStyles[tone] || toneStyles.slate;
+
+  return (
+    <div className={`min-w-0 rounded-lg border p-4 shadow-sm ${styles.card}`}>
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <p className={`min-w-0 text-xs font-bold uppercase tracking-wide ${styles.label}`}>{title}</p>
+        <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${tone === 'indigo' ? 'bg-indigo-500' : tone === 'emerald' ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+      </div>
+      <p className={`${valueSizeClass(value, true)} mt-2 max-w-full font-extrabold leading-tight tracking-normal tabular-nums ${styles.accent}`}>
+        {value}
+      </p>
+      <p className="mt-2 text-xs leading-snug text-slate-500">{detail}</p>
     </div>
   );
 }

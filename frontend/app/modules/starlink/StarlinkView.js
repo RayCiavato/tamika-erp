@@ -10,6 +10,23 @@ const formatDate = (value) => {
   if (Number.isNaN(date.getTime())) return 'Sin fecha';
   return date.toLocaleDateString('es-VE', { timeZone: 'UTC' });
 };
+const toInputDate = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString().slice(0, 10);
+};
+const currentMonth = () => new Date().toISOString().slice(0, 7);
+const emptyPagoForm = () => ({
+  id: '',
+  periodo: currentMonth(),
+  montoUsd: '',
+  tasaBcv: '',
+  fechaPago: '',
+  fechaCorte: '',
+  estado: 'PENDIENTE',
+  referencia: '',
+});
 
 const statusTone = (diasRestantes) => {
   const days = Number(diasRestantes);
@@ -39,6 +56,35 @@ export default function StarlinkView({ apiFetch = fetch, clientes = [], onChange
   const [clientBarOpen, setClientBarOpen] = useState(true);
   const [emailBarOpen, setEmailBarOpen] = useState(true);
   const [selectedAntenaId, setSelectedAntenaId] = useState('');
+  const [pagos, setPagos] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [cuentaForm, setCuentaForm] = useState({
+    id: '',
+    clienteId: '',
+    nombreCuenta: '',
+    correoCuenta: '',
+    referencia: '',
+    tipoServicio: 'SERVICIO_COMPLETO',
+    montoMensualUsd: '',
+    fechaCorte: '',
+    estado: 'ACTIVA',
+    observaciones: '',
+  });
+  const [antenaForm, setAntenaForm] = useState({
+    id: '',
+    clienteId: '',
+    cuentaStarlinkId: '',
+    nombreAntena: '',
+    numeroKit: '',
+    numeroSerie: '',
+    ubicacion: '',
+    fechaRegistro: '',
+    fechaCorte: '',
+    tipoServicio: 'SERVICIO_COMPLETO',
+    estado: 'ACTIVA',
+    observaciones: '',
+  });
+  const [pagoForm, setPagoForm] = useState(emptyPagoForm);
 
   const clientesById = useMemo(() => new Map(clientes.map((cliente) => [cliente.id, cliente])), [clientes]);
   const cuentasById = useMemo(() => new Map(cuentas.map((cuenta) => [cuenta.id, cuenta])), [cuentas]);
@@ -47,19 +93,22 @@ export default function StarlinkView({ apiFetch = fetch, clientes = [], onChange
     setLoading(true);
     setMensaje('');
     try {
-      const [cuentasRes, antenasRes, alertasRes] = await Promise.all([
+      const [cuentasRes, antenasRes, alertasRes, pagosRes] = await Promise.all([
         apiFetch('/api/starlink/cuentas'),
         apiFetch('/api/starlink/antenas'),
         apiFetch('/api/starlink/alertas'),
+        apiFetch('/api/starlink/pagos'),
       ]);
-      const [cuentasData, antenasData, alertasData] = await Promise.all([
+      const [cuentasData, antenasData, alertasData, pagosData] = await Promise.all([
         cuentasRes.json().catch(() => []),
         antenasRes.json().catch(() => []),
         alertasRes.json().catch(() => ({ alertas: [] })),
+        pagosRes.json().catch(() => []),
       ]);
       setCuentas(Array.isArray(cuentasData) ? cuentasData : []);
       setAntenas(Array.isArray(antenasData) ? antenasData : []);
       setAlertas(Array.isArray(alertasData?.alertas) ? alertasData.alertas : []);
+      setPagos(Array.isArray(pagosData) ? pagosData : []);
       onChanged?.();
     } catch (error) {
       setMensaje(error.message || 'No se pudo cargar Starlink.');
@@ -119,9 +168,212 @@ export default function StarlinkView({ apiFetch = fetch, clientes = [], onChange
   }, [antenasEnriquecidas, busqueda, clienteFiltro, correoFiltro]);
 
   const selectedAntena = antenasFiltradas.find((antena) => antena.id === selectedAntenaId) || antenasFiltradas[0];
+  const selectedCuenta = selectedAntena?.cuenta;
+  const pagosCuenta = useMemo(() => (
+    selectedCuenta?.id
+      ? pagos
+        .filter((pago) => pago.cuentaStarlinkId === selectedCuenta.id)
+        .sort((a, b) => new Date(b.fechaCorte || b.createdAt || 0) - new Date(a.fechaCorte || a.createdAt || 0))
+      : []
+  ), [pagos, selectedCuenta?.id]);
   const alertasProximas = alertas.filter((alerta) => Number(alerta.diasRestantes) >= 0 && Number(alerta.diasRestantes) <= 10);
   const alertasHoy = alertasProximas.filter((alerta) => Number(alerta.diasRestantes) === 0);
   const alertasVencidas = alertas.filter((alerta) => Number(alerta.diasRestantes) < 0);
+
+  useEffect(() => {
+    if (!selectedAntena) {
+      setAntenaForm((prev) => ({ ...prev, id: '' }));
+      setCuentaForm((prev) => ({ ...prev, id: '' }));
+      setPagoForm(emptyPagoForm());
+      return;
+    }
+
+    const cuenta = selectedAntena.cuenta;
+    setAntenaForm({
+      id: selectedAntena.id,
+      clienteId: selectedAntena.clienteId || cuenta?.clienteId || '',
+      cuentaStarlinkId: selectedAntena.cuentaStarlinkId || cuenta?.id || '',
+      nombreAntena: selectedAntena.nombreAntena || '',
+      numeroKit: selectedAntena.numeroKit || '',
+      numeroSerie: selectedAntena.numeroSerie || '',
+      ubicacion: selectedAntena.ubicacion || '',
+      fechaRegistro: toInputDate(selectedAntena.fechaRegistro),
+      fechaCorte: toInputDate(selectedAntena.fechaCorte || cuenta?.fechaCorte),
+      tipoServicio: selectedAntena.tipoServicio || cuenta?.tipoServicio || 'SERVICIO_COMPLETO',
+      estado: selectedAntena.estado || 'ACTIVA',
+      observaciones: selectedAntena.observaciones || '',
+    });
+
+    setCuentaForm({
+      id: cuenta?.id || '',
+      clienteId: cuenta?.clienteId || selectedAntena.clienteId || '',
+      nombreCuenta: cuenta?.nombreCuenta || '',
+      correoCuenta: cuenta?.correoCuenta || '',
+      referencia: cuenta?.referencia || '',
+      tipoServicio: cuenta?.tipoServicio || selectedAntena.tipoServicio || 'SERVICIO_COMPLETO',
+      montoMensualUsd: cuenta?.montoMensualUsd?.toString() || '',
+      fechaCorte: toInputDate(cuenta?.fechaCorte || selectedAntena.fechaCorte),
+      estado: cuenta?.estado || 'ACTIVA',
+      observaciones: cuenta?.observaciones || '',
+    });
+
+    const ultimoPago = pagosCuenta[0];
+    setPagoForm(ultimoPago ? {
+      id: ultimoPago.id,
+      periodo: ultimoPago.periodo || currentMonth(),
+      montoUsd: ultimoPago.montoUsd?.toString() || '',
+      tasaBcv: ultimoPago.tasaBcv?.toString() || '',
+      fechaPago: toInputDate(ultimoPago.fechaPago),
+      fechaCorte: toInputDate(ultimoPago.fechaCorte),
+      estado: ultimoPago.estado || 'PENDIENTE',
+      referencia: ultimoPago.referencia || '',
+    } : {
+      ...emptyPagoForm(),
+      montoUsd: cuenta?.montoMensualUsd?.toString() || '',
+      fechaCorte: toInputDate(cuenta?.fechaCorte || selectedAntena.fechaCorte),
+    });
+  }, [selectedAntena?.id, selectedCuenta?.id, pagosCuenta.length]);
+
+  const readJson = async (res, fallback) => {
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || fallback);
+    return data;
+  };
+
+  const guardarCuenta = async () => {
+    if (!cuentaForm.id) return setMensaje('Selecciona una cuenta Starlink valida.');
+    setSaving(true);
+    setMensaje('');
+    try {
+      const res = await apiFetch(`/api/starlink/cuentas/${cuentaForm.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cuentaForm),
+      });
+      await readJson(res, 'No se pudo actualizar la cuenta Starlink.');
+      setMensaje('Cuenta/correo Starlink actualizado.');
+      await cargarStarlink();
+    } catch (error) {
+      setMensaje(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const guardarAntena = async () => {
+    if (!antenaForm.id) return setMensaje('Selecciona una antena Starlink valida.');
+    setSaving(true);
+    setMensaje('');
+    try {
+      const res = await apiFetch(`/api/starlink/antenas/${antenaForm.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(antenaForm),
+      });
+      await readJson(res, 'No se pudo actualizar la antena Starlink.');
+      setMensaje('Antena Starlink actualizada.');
+      await cargarStarlink();
+    } catch (error) {
+      setMensaje(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const desactivarAntena = async () => {
+    if (!selectedAntena?.id || !confirm(`Desactivar antena ${selectedAntena.nombreAntena}?`)) return;
+    setSaving(true);
+    setMensaje('');
+    try {
+      const res = await apiFetch(`/api/starlink/antenas/${selectedAntena.id}`, { method: 'DELETE' });
+      await readJson(res, 'No se pudo desactivar la antena Starlink.');
+      setSelectedAntenaId('');
+      setMensaje('Antena Starlink desactivada.');
+      await cargarStarlink();
+    } catch (error) {
+      setMensaje(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const desactivarCuenta = async () => {
+    if (!selectedCuenta?.id || !confirm(`Desactivar cuenta ${selectedCuenta.nombreCuenta}?`)) return;
+    setSaving(true);
+    setMensaje('');
+    try {
+      const res = await apiFetch(`/api/starlink/cuentas/${selectedCuenta.id}`, { method: 'DELETE' });
+      await readJson(res, 'No se pudo desactivar la cuenta Starlink.');
+      setMensaje('Cuenta Starlink desactivada.');
+      await cargarStarlink();
+    } catch (error) {
+      setMensaje(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const guardarPago = async (event) => {
+    event.preventDefault();
+    if (!selectedCuenta?.id) return setMensaje('Selecciona una cuenta Starlink para registrar pagos.');
+    setSaving(true);
+    setMensaje('');
+    try {
+      const url = pagoForm.id ? `/api/starlink/pagos/${pagoForm.id}` : '/api/starlink/pagos';
+      const res = await apiFetch(url, {
+        method: pagoForm.id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cuentaStarlinkId: selectedCuenta.id,
+          ...pagoForm,
+          tasaBcv: pagoForm.tasaBcv || undefined,
+          fechaPago: pagoForm.fechaPago || undefined,
+        }),
+      });
+      await readJson(res, pagoForm.id ? 'No se pudo actualizar el pago Starlink.' : 'No se pudo registrar el pago Starlink.');
+      setMensaje(pagoForm.id ? 'Pago Starlink actualizado.' : 'Pago Starlink registrado.');
+      await cargarStarlink();
+    } catch (error) {
+      setMensaje(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const editarPago = (pago) => {
+    setPagoForm({
+      id: pago.id,
+      periodo: pago.periodo || currentMonth(),
+      montoUsd: pago.montoUsd?.toString() || '',
+      tasaBcv: pago.tasaBcv?.toString() || '',
+      fechaPago: toInputDate(pago.fechaPago),
+      fechaCorte: toInputDate(pago.fechaCorte),
+      estado: pago.estado || 'PENDIENTE',
+      referencia: pago.referencia || '',
+    });
+  };
+
+  const nuevoPago = () => setPagoForm({
+    ...emptyPagoForm(),
+    montoUsd: selectedCuenta?.montoMensualUsd?.toString() || '',
+    fechaCorte: toInputDate(selectedCuenta?.fechaCorte || selectedAntena?.fechaCorte),
+  });
+
+  const anularPago = async (pago) => {
+    if (!pago?.id || !confirm(`Anular pago ${pago.periodo}?`)) return;
+    setSaving(true);
+    setMensaje('');
+    try {
+      const res = await apiFetch(`/api/starlink/pagos/${pago.id}`, { method: 'DELETE' });
+      await readJson(res, 'No se pudo anular el pago Starlink.');
+      setMensaje('Pago Starlink anulado.');
+      await cargarStarlink();
+    } catch (error) {
+      setMensaje(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <section className="space-y-5">
@@ -250,18 +502,149 @@ export default function StarlinkView({ apiFetch = fetch, clientes = [], onChange
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <h3 className="text-sm font-extrabold uppercase text-slate-600">Detalle seleccionado</h3>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="text-sm font-extrabold uppercase text-slate-600">Detalle seleccionado</h3>
+              {selectedAntena && (
+                <button type="button" onClick={desactivarAntena} disabled={saving} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-60">
+                  Desactivar antena
+                </button>
+              )}
+            </div>
             {selectedAntena ? (
-              <div className="mt-4 space-y-3 text-sm">
-                <DetailRow label="Antena" value={selectedAntena.nombreAntena} />
-                <DetailRow label="Cliente" value={selectedAntena.cliente?.nombre || '-'} />
-                <DetailRow label="Correo asociado" value={selectedAntena.cuenta?.correoCuenta || '-'} />
-                <DetailRow label="Cuenta" value={selectedAntena.cuenta?.nombreCuenta || '-'} />
-                <DetailRow label="Kit" value={selectedAntena.numeroKit || '-'} />
-                <DetailRow label="Serie" value={selectedAntena.numeroSerie || '-'} />
-                <DetailRow label="Fecha registro" value={formatDate(selectedAntena.fechaRegistro)} />
-                <DetailRow label="Fecha corte" value={formatDate(selectedAntena.fechaCorte || selectedAntena.cuenta?.fechaCorte)} />
-                <DetailRow label="Observaciones" value={selectedAntena.observaciones || '-'} />
+              <div className="mt-4 space-y-4 text-sm">
+                <form onSubmit={(event) => { event.preventDefault(); guardarCuenta(); }} className="rounded-lg border border-slate-200 bg-white p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="font-extrabold text-slate-950">Cuenta / correo Starlink</h4>
+                      <p className="text-xs text-slate-500">Modificar este bloque actualiza la cuenta asociada.</p>
+                    </div>
+                    <button type="button" onClick={desactivarCuenta} disabled={!selectedCuenta?.id || saving} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50">
+                      Desactivar cuenta
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3">
+                    <EditField label="Cliente">
+                      <select value={cuentaForm.clienteId} onChange={(event) => setCuentaForm((prev) => ({ ...prev, clienteId: event.target.value }))} className="input">
+                        <option value="">Selecciona cliente</option>
+                        {clientes.map((cliente) => <option key={cliente.id} value={cliente.id}>{cliente.codigoCliente ? `${cliente.codigoCliente} - ` : ''}{cliente.nombre}</option>)}
+                      </select>
+                    </EditField>
+                    <EditField label="Nombre cuenta">
+                      <input value={cuentaForm.nombreCuenta} onChange={(event) => setCuentaForm((prev) => ({ ...prev, nombreCuenta: event.target.value }))} className="input" />
+                    </EditField>
+                    <EditField label="Correo asociado">
+                      <input type="email" value={cuentaForm.correoCuenta} onChange={(event) => setCuentaForm((prev) => ({ ...prev, correoCuenta: event.target.value }))} className="input" />
+                    </EditField>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <EditField label="Monto mensual USD">
+                        <input type="number" min="0" step="0.01" value={cuentaForm.montoMensualUsd} onChange={(event) => setCuentaForm((prev) => ({ ...prev, montoMensualUsd: event.target.value }))} className="input" />
+                      </EditField>
+                      <EditField label="Fecha corte">
+                        <input type="date" value={cuentaForm.fechaCorte} onChange={(event) => setCuentaForm((prev) => ({ ...prev, fechaCorte: event.target.value }))} className="input" />
+                      </EditField>
+                    </div>
+                    <EditField label="Observaciones">
+                      <textarea value={cuentaForm.observaciones} onChange={(event) => setCuentaForm((prev) => ({ ...prev, observaciones: event.target.value }))} rows={2} className="input resize-y" />
+                    </EditField>
+                  </div>
+                  <button disabled={!cuentaForm.id || saving} className="mt-3 w-full rounded-lg bg-slate-950 px-4 py-2.5 text-sm font-extrabold text-white hover:bg-slate-800 disabled:opacity-60">
+                    Guardar cuenta
+                  </button>
+                </form>
+
+                <form onSubmit={(event) => { event.preventDefault(); guardarAntena(); }} className="rounded-lg border border-slate-200 bg-white p-4">
+                  <h4 className="font-extrabold text-slate-950">Antena</h4>
+                  <p className="mb-3 text-xs text-slate-500">Modificar este bloque actualiza la antena seleccionada.</p>
+                  <div className="grid grid-cols-1 gap-3">
+                    <EditField label="Nombre antena">
+                      <input value={antenaForm.nombreAntena} onChange={(event) => setAntenaForm((prev) => ({ ...prev, nombreAntena: event.target.value }))} className="input" />
+                    </EditField>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <EditField label="Numero kit">
+                        <input value={antenaForm.numeroKit} onChange={(event) => setAntenaForm((prev) => ({ ...prev, numeroKit: event.target.value }))} className="input" />
+                      </EditField>
+                      <EditField label="Numero serie">
+                        <input value={antenaForm.numeroSerie} onChange={(event) => setAntenaForm((prev) => ({ ...prev, numeroSerie: event.target.value }))} className="input" />
+                      </EditField>
+                    </div>
+                    <EditField label="Ubicacion">
+                      <input value={antenaForm.ubicacion} onChange={(event) => setAntenaForm((prev) => ({ ...prev, ubicacion: event.target.value }))} className="input" />
+                    </EditField>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <EditField label="Fecha registro">
+                        <input type="date" value={antenaForm.fechaRegistro} onChange={(event) => setAntenaForm((prev) => ({ ...prev, fechaRegistro: event.target.value }))} className="input" />
+                      </EditField>
+                      <EditField label="Fecha corte">
+                        <input type="date" value={antenaForm.fechaCorte} onChange={(event) => setAntenaForm((prev) => ({ ...prev, fechaCorte: event.target.value }))} className="input" />
+                      </EditField>
+                    </div>
+                    <EditField label="Observaciones">
+                      <textarea value={antenaForm.observaciones} onChange={(event) => setAntenaForm((prev) => ({ ...prev, observaciones: event.target.value }))} rows={2} className="input resize-y" />
+                    </EditField>
+                  </div>
+                  <button disabled={!antenaForm.id || saving} className="mt-3 w-full rounded-lg bg-cyan-700 px-4 py-2.5 text-sm font-extrabold text-white hover:bg-cyan-600 disabled:opacity-60">
+                    Guardar antena
+                  </button>
+                </form>
+
+                <form onSubmit={guardarPago} className="rounded-lg border border-slate-200 bg-white p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="font-extrabold text-slate-950">Pagos / cortes</h4>
+                      <p className="text-xs text-slate-500">Editar o anular pagos conserva traza en auditoría.</p>
+                    </div>
+                    <button type="button" onClick={nuevoPago} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100">
+                      Nuevo pago
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <EditField label="Periodo">
+                      <input type="month" value={pagoForm.periodo} onChange={(event) => setPagoForm((prev) => ({ ...prev, periodo: event.target.value }))} className="input" />
+                    </EditField>
+                    <EditField label="Monto USD">
+                      <input type="number" min="0" step="0.01" value={pagoForm.montoUsd} onChange={(event) => setPagoForm((prev) => ({ ...prev, montoUsd: event.target.value }))} className="input" />
+                    </EditField>
+                    <EditField label="Fecha corte">
+                      <input type="date" value={pagoForm.fechaCorte} onChange={(event) => setPagoForm((prev) => ({ ...prev, fechaCorte: event.target.value }))} className="input" />
+                    </EditField>
+                    <EditField label="Fecha pago">
+                      <input type="date" value={pagoForm.fechaPago} onChange={(event) => setPagoForm((prev) => ({ ...prev, fechaPago: event.target.value }))} className="input" />
+                    </EditField>
+                    <EditField label="Estado">
+                      <select value={pagoForm.estado} onChange={(event) => setPagoForm((prev) => ({ ...prev, estado: event.target.value }))} className="input">
+                        <option value="PENDIENTE">Pendiente</option>
+                        <option value="PAGADO">Pagado</option>
+                        <option value="VENCIDO">Vencido</option>
+                        <option value="ANULADO">Anulado</option>
+                      </select>
+                    </EditField>
+                    <EditField label="Tasa BCV">
+                      <input type="number" min="0" step="0.01" value={pagoForm.tasaBcv} onChange={(event) => setPagoForm((prev) => ({ ...prev, tasaBcv: event.target.value }))} className="input" />
+                    </EditField>
+                  </div>
+                  <EditField label="Referencia">
+                    <input value={pagoForm.referencia} onChange={(event) => setPagoForm((prev) => ({ ...prev, referencia: event.target.value }))} className="input" />
+                  </EditField>
+                  <button disabled={!selectedCuenta?.id || saving} className="mt-3 w-full rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-extrabold text-white hover:bg-emerald-600 disabled:opacity-60">
+                    {pagoForm.id ? 'Guardar pago' : 'Registrar pago'}
+                  </button>
+
+                  <div className="mt-4 space-y-2">
+                    {pagosCuenta.map((pago) => (
+                      <div key={pago.id} className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="font-bold text-slate-900">{pago.periodo} / {formatUsd(pago.montoUsd)}</p>
+                          <p className="text-xs text-slate-500">Corte: {formatDate(pago.fechaCorte)} / Estado: {pago.estado}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => editarPago(pago)} className="text-xs font-bold text-blue-600">Editar</button>
+                          <button type="button" onClick={() => anularPago(pago)} className="text-xs font-bold text-red-600">Anular</button>
+                        </div>
+                      </div>
+                    ))}
+                    {!pagosCuenta.length && <p className="text-xs font-semibold text-slate-500">Sin pagos registrados para esta cuenta.</p>}
+                  </div>
+                </form>
               </div>
             ) : (
               <p className="mt-4 text-sm text-slate-500">Selecciona una antena para ver su detalle.</p>
@@ -308,6 +691,15 @@ function FilterPanel({ title, open, onToggle, children }) {
       </button>
       {open && <div className="border-t border-slate-200 p-3">{children}</div>}
     </div>
+  );
+}
+
+function EditField({ label, children }) {
+  return (
+    <label className="block min-w-0 text-xs font-bold text-slate-500">
+      <span className="mb-1 block">{label}</span>
+      {children}
+    </label>
   );
 }
 

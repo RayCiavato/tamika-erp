@@ -17,6 +17,8 @@ const ESTADOS = [
   { value: 'ANULADO', label: 'Anulado' },
 ];
 
+const CATEGORIAS = ['Servicio', 'Producto', 'Nomina', 'Pago de factura', 'Suscripcion', 'Otro'];
+
 const estadoStyles = {
   PENDIENTE: 'bg-amber-100 text-amber-800',
   PAGADO: 'bg-emerald-100 text-emerald-800',
@@ -45,7 +47,12 @@ const emptyForm = () => ({
   fechaVencimiento: '',
   estado: 'PAGADO',
   clienteId: '',
+  categoria: '',
   proveedorId: '',
+  productoId: '',
+  servicioId: '',
+  tipoProductoId: '',
+  tipoServicioId: '',
   referencia: '',
 });
 
@@ -64,6 +71,11 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
   const [loadingTasa, setLoadingTasa] = useState(false);
   const [tasaMensaje, setTasaMensaje] = useState('');
   const [filters, setFilters] = useState({ tipo: '', estado: '', buscar: '', desde: '', hasta: '' });
+  const [proveedores, setProveedores] = useState([]);
+  const [productos, setProductos] = useState([]);
+  const [servicios, setServicios] = useState([]);
+  const [tiposProducto, setTiposProducto] = useState([]);
+  const [tiposServicio, setTiposServicio] = useState([]);
 
   const montoBsCalculado = useMemo(() => {
     const monto = Number(form.montoUsd || 0);
@@ -89,6 +101,32 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
       setMensaje(error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const cargarCatalogos = async () => {
+    try {
+      const [proveedoresRes, productosRes, serviciosRes, tiposProductoRes, tiposServicioRes] = await Promise.all([
+        apiFetch('/api/proveedores'),
+        apiFetch('/api/productos'),
+        apiFetch('/api/servicios'),
+        apiFetch('/api/tipos-producto'),
+        apiFetch('/api/tipos-servicio'),
+      ]);
+      const [proveedoresData, productosData, serviciosData, tiposProductoData, tiposServicioData] = await Promise.all([
+        proveedoresRes.json().catch(() => []),
+        productosRes.json().catch(() => []),
+        serviciosRes.json().catch(() => []),
+        tiposProductoRes.json().catch(() => []),
+        tiposServicioRes.json().catch(() => []),
+      ]);
+      setProveedores(Array.isArray(proveedoresData) ? proveedoresData : []);
+      setProductos(Array.isArray(productosData) ? productosData : []);
+      setServicios(Array.isArray(serviciosData) ? serviciosData : []);
+      setTiposProducto(Array.isArray(tiposProductoData) ? tiposProductoData : []);
+      setTiposServicio(Array.isArray(tiposServicioData) ? tiposServicioData : []);
+    } catch (error) {
+      setMensaje('No se pudieron cargar los catálogos contables.');
     }
   };
 
@@ -134,6 +172,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
 
   useEffect(() => {
     cargarTasaBcv({ skipConfirm: true });
+    cargarCatalogos();
   }, []);
 
   useEffect(() => {
@@ -171,6 +210,39 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
       estado: value === 'CUENTA_POR_COBRAR' || value === 'CUENTA_POR_PAGAR' ? 'PENDIENTE' : 'PAGADO',
     }));
   };
+  const updateCategoria = (value) => {
+    setForm((prev) => ({
+      ...prev,
+      categoria: value,
+      productoId: value === 'Producto' ? prev.productoId : '',
+      servicioId: value === 'Servicio' || value === 'Suscripcion' ? prev.servicioId : '',
+      tipoProductoId: value === 'Producto' ? prev.tipoProductoId : '',
+      tipoServicioId: value === 'Servicio' || value === 'Suscripcion' ? prev.tipoServicioId : '',
+    }));
+  };
+  const seleccionarProveedor = (id) => setForm((prev) => ({ ...prev, proveedorId: id }));
+  const seleccionarProducto = (id) => {
+    const producto = productos.find((item) => item.id === id);
+    setForm((prev) => ({
+      ...prev,
+      productoId: id,
+      tipoProductoId: producto?.tipoProductoId || prev.tipoProductoId,
+      concepto: prev.concepto || producto?.nombre || '',
+      descripcion: prev.descripcion || producto?.descripcion || '',
+      montoUsd: prev.montoUsd || producto?.precioUsd?.toString() || '',
+    }));
+  };
+  const seleccionarServicio = (id) => {
+    const servicio = servicios.find((item) => item.id === id);
+    setForm((prev) => ({
+      ...prev,
+      servicioId: id,
+      tipoServicioId: servicio?.tipoServicioId || prev.tipoServicioId,
+      concepto: prev.concepto || servicio?.nombre || '',
+      descripcion: prev.descripcion || servicio?.descripcion || '',
+      montoUsd: prev.montoUsd || servicio?.precioUsd?.toString() || '',
+    }));
+  };
   const updateFilter = (field, value) => setFilters((prev) => ({ ...prev, [field]: value }));
 
   const resetForm = () => {
@@ -190,7 +262,13 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
       tasaFuente: form.tasaFuente === 'NO_DISPONIBLE' ? null : form.tasaFuente,
       tasaFecha: form.tasaFecha || null,
       clienteId: form.clienteId || null,
+      categoria: form.categoria || null,
       fechaVencimiento: form.fechaVencimiento || null,
+      proveedorId: form.proveedorId || null,
+      productoId: form.productoId || null,
+      servicioId: form.servicioId || null,
+      tipoProductoId: form.tipoProductoId || null,
+      tipoServicioId: form.tipoServicioId || null,
     };
 
     try {
@@ -225,7 +303,12 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
       fechaVencimiento: toDateInput(mov.fechaVencimiento),
       estado: mov.estado,
       clienteId: mov.clienteId || '',
+      categoria: mov.categoria || '',
       proveedorId: mov.proveedorId || '',
+      productoId: mov.productoId || '',
+      servicioId: mov.servicioId || '',
+      tipoProductoId: mov.tipoProductoId || '',
+      tipoServicioId: mov.tipoServicioId || '',
       referencia: mov.referencia || '',
     });
     setTasaMensaje(tasaFuenteLabel[mov.tasaFuente] || (mov.tasaBcv ? 'Tasa guardada en el movimiento.' : ''));
@@ -334,11 +417,62 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
                 {clientes.map((cliente) => <option key={cliente.id} value={cliente.id}>{cliente.nombre}</option>)}
               </select>
             </Field>
-            <Field label="Proveedor ID">
-              <input value={form.proveedorId} onChange={(e) => updateForm('proveedorId', e.target.value)} className="input" />
+            <Field label="Proveedor" className="sm:col-span-2">
+              <select value={form.proveedorId} onChange={(e) => seleccionarProveedor(e.target.value)} className="input">
+                <option value="">Sin proveedor asociado</option>
+                {proveedores.filter((proveedor) => proveedor.activo).map((proveedor) => (
+                  <option key={proveedor.id} value={proveedor.id}>{proveedor.codigoProveedor ? `${proveedor.codigoProveedor} - ` : ''}{proveedor.nombre}{proveedor.rif ? ` (${proveedor.rif})` : ''}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-slate-400">El código/ID se carga automáticamente al seleccionar proveedor.</p>
+            </Field>
+            <Field label="Categoria">
+              <select value={form.categoria} onChange={(e) => updateCategoria(e.target.value)} className="input">
+                <option value="">Sin categoria</option>
+                {CATEGORIAS.map((categoria) => <option key={categoria} value={categoria}>{categoria}</option>)}
+              </select>
             </Field>
             <Field label="Referencia">
               <input value={form.referencia} onChange={(e) => updateForm('referencia', e.target.value)} className="input" />
+            </Field>
+            {(form.categoria === 'Producto') && (
+              <>
+                <Field label="Tipo producto">
+                  <select value={form.tipoProductoId} onChange={(e) => updateForm('tipoProductoId', e.target.value)} className="input">
+                    <option value="">Todos</option>
+                    {tiposProducto.filter((tipo) => tipo.activo).map((tipo) => <option key={tipo.id} value={tipo.id}>{tipo.nombre}</option>)}
+                  </select>
+                </Field>
+                <Field label="Producto">
+                  <select value={form.productoId} onChange={(e) => seleccionarProducto(e.target.value)} className="input">
+                    <option value="">Selecciona producto</option>
+                    {productos.filter((producto) => producto.activo && (!form.tipoProductoId || producto.tipoProductoId === form.tipoProductoId)).map((producto) => (
+                      <option key={producto.id} value={producto.id}>{producto.codigoProducto ? `${producto.codigoProducto} - ` : ''}{producto.nombre}</option>
+                    ))}
+                  </select>
+                </Field>
+              </>
+            )}
+            {(form.categoria === 'Servicio' || form.categoria === 'Suscripcion') && (
+              <>
+                <Field label="Tipo servicio">
+                  <select value={form.tipoServicioId} onChange={(e) => updateForm('tipoServicioId', e.target.value)} className="input">
+                    <option value="">Todos</option>
+                    {tiposServicio.filter((tipo) => tipo.activo).map((tipo) => <option key={tipo.id} value={tipo.id}>{tipo.nombre}</option>)}
+                  </select>
+                </Field>
+                <Field label="Servicio">
+                  <select value={form.servicioId} onChange={(e) => seleccionarServicio(e.target.value)} className="input">
+                    <option value="">Selecciona servicio</option>
+                    {servicios.filter((servicio) => servicio.activo && (!form.tipoServicioId || servicio.tipoServicioId === form.tipoServicioId)).map((servicio) => (
+                      <option key={servicio.id} value={servicio.id}>{servicio.codigoServicio ? `${servicio.codigoServicio} - ` : ''}{servicio.nombre}</option>
+                    ))}
+                  </select>
+                </Field>
+              </>
+            )}
+            <Field label="ID técnico asociado" className="sm:col-span-2">
+              <input readOnly value={form.productoId || form.servicioId || form.proveedorId || '-'} className="input bg-slate-100 font-mono text-xs text-slate-500" />
             </Field>
           </div>
 
@@ -366,7 +500,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
           </form>
 
           <div className="max-w-full overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
+            <table className="w-full min-w-[880px] text-left text-sm">
               <thead className="bg-slate-100 text-xs uppercase text-slate-500">
                 <tr>
                   <th className="p-3">Fecha</th>
@@ -385,9 +519,10 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
                     <td className="p-3 text-slate-500">{formatDate(mov.fechaMovimiento)}</td>
                     <td className="p-3">
                       <p className="font-bold text-slate-950">{mov.concepto}</p>
-                      <p className="text-xs text-slate-500">{TIPOS.find((t) => t.value === mov.tipo)?.label || mov.tipo}</p>
+                      <p className="text-xs text-slate-500">{TIPOS.find((t) => t.value === mov.tipo)?.label || mov.tipo}{mov.categoria ? ` · ${mov.categoria}` : ''}</p>
+                      {(mov.producto || mov.servicio) && <p className="text-xs font-semibold text-indigo-600">{mov.producto?.nombre || mov.servicio?.nombre}</p>}
                     </td>
-                    <td className="p-3 text-slate-600">{mov.cliente?.nombre || mov.referencia || mov.proveedorId || '-'}</td>
+                    <td className="p-3 text-slate-600">{mov.cliente?.nombre || mov.referencia || proveedores.find((proveedor) => proveedor.id === mov.proveedorId)?.nombre || mov.proveedorId || '-'}</td>
                     <td className="p-3 whitespace-nowrap"><span className={`rounded-full px-2 py-1 text-xs font-bold ${estadoStyles[mov.estado] || 'bg-slate-100 text-slate-700'}`}>{mov.estado}</span></td>
                     <td className="p-3 text-right">
                       <p className="font-extrabold">{formatUsd(mov.montoUsd)}</p>

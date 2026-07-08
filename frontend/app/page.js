@@ -7,6 +7,9 @@ import ContabilidadView from './components/ContabilidadView';
 import ReportesContablesView from './components/ReportesContablesView';
 import AuditoriaView from './components/AuditoriaView';
 import UsuariosView from './components/UsuariosView';
+import CatalogosEnterpriseView from './modules/catalogos/CatalogosEnterpriseView';
+import StarlinkView from './modules/starlink/StarlinkView';
+import NominaView from './modules/nomina/NominaView';
 const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
 import 'react-quill-new/dist/quill.snow.css';
 
@@ -76,6 +79,8 @@ export default function TamikaERP() {
   const [loginError, setLoginError] = useState('');
 
   const [clientes, setClientes] = useState([]);
+  const [productos, setProductos] = useState([]);
+  const [servicios, setServicios] = useState([]);
   const [historialCoti, setHistorialCoti] = useState([]);
   const [dashboardResumen, setDashboardResumen] = useState(null);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
@@ -256,6 +261,8 @@ export default function TamikaERP() {
 
   const cargarDatos = () => {
     apiFetch('/api/clientes').then(res => res.json()).then(data => setClientes(Array.isArray(data) ? data : []));
+    apiFetch('/api/productos').then(res => res.json()).then(data => setProductos(Array.isArray(data) ? data : [])).catch(() => setProductos([]));
+    apiFetch('/api/servicios').then(res => res.json()).then(data => setServicios(Array.isArray(data) ? data : [])).catch(() => setServicios([]));
     apiFetch('/api/propuestas').then(res => res.json()).then(data => setHistorialCoti(Array.isArray(data) ? data : []));
     if (!cotiEditandoId) cargarSiguienteCorrelativo(tipoDocumento);
     apiFetch('/api/tasas').then(res => res.json()).then(data => {
@@ -323,8 +330,39 @@ export default function TamikaERP() {
     setItemsCoti([]);
     cargarSiguienteCorrelativo('PROPUESTA');
   };
-  const agregarItemCoti = () => setItemsCoti([...itemsCoti, { id: Date.now(), desc: '', cant: '1', costo: '0', gan: defGan, ret: defRet, com: defCom, rel: defRel, unitarioManual: '0' }]);
+  const costoDesdePrecio = (precio, item = {}) => {
+    const gan = parseVe(item.gan ?? defGan);
+    const ret = parseVe(item.ret ?? defRet);
+    const com = parseVe(item.com ?? defCom);
+    const rel = parseVe(item.rel ?? defRel) || 1;
+    const divisor = 1 + gan;
+    if (!divisor) return '0';
+    return ((precio * rel * (1 - ret) * (1 - com)) / divisor).toFixed(4).replace('.', ',');
+  };
+  const buildItemCoti = (overrides = {}) => ({ id: Date.now() + Math.random(), catalogoTipo: 'MANUAL', productoId: '', servicioId: '', desc: '', cant: '1', costo: '0', gan: defGan, ret: defRet, com: defCom, rel: defRel, unitarioManual: '0', ...overrides });
+  const agregarItemCoti = () => setItemsCoti([...itemsCoti, buildItemCoti()]);
   const actualizarItem = (id, campo, valor) => setItemsCoti(itemsCoti.map(item => item.id === id ? { ...item, [campo]: valor } : item));
+  const actualizarCatalogoItem = (id, catalogoTipo, catalogoId = '') => {
+    setItemsCoti(itemsCoti.map((item) => {
+      if (item.id !== id) return item;
+      if (catalogoTipo === 'MANUAL') return { ...item, catalogoTipo, productoId: '', servicioId: '' };
+      const source = catalogoTipo === 'PRODUCTO'
+        ? productos.find((producto) => producto.id === catalogoId)
+        : servicios.find((servicio) => servicio.id === catalogoId);
+      if (!source) return { ...item, catalogoTipo, productoId: catalogoTipo === 'PRODUCTO' ? catalogoId : '', servicioId: catalogoTipo === 'SERVICIO' ? catalogoId : '' };
+      const precio = Number(source.precioUsd || 0);
+      const descripcion = [source.nombre, source.descripcion].filter(Boolean).join('\n');
+      return {
+        ...item,
+        catalogoTipo,
+        productoId: catalogoTipo === 'PRODUCTO' ? source.id : '',
+        servicioId: catalogoTipo === 'SERVICIO' ? source.id : '',
+        desc: descripcion,
+        unitarioManual: precio.toFixed(2).replace('.', ','),
+        costo: costoDesdePrecio(precio, item),
+      };
+    }));
+  };
   const eliminarItem = (id) => setItemsCoti(itemsCoti.filter(item => item.id !== id));
   const getPUnitario = (item) => { if (advMode) return (parseVe(item.costo) * (1 + parseVe(item.gan))) / ((parseVe(item.rel)||1) * (1 - parseVe(item.ret)) * (1 - parseVe(item.com))); return parseVe(item.unitarioManual); };
   const calcularSubtotal = () => itemsCoti.reduce((acc, item) => acc + (getPUnitario(item) * parseVe(item.cant)), 0);
@@ -467,7 +505,7 @@ export default function TamikaERP() {
 
       const terminosFormateados = htmlToPdfmake(condiciones, {
         window: window,
-        defaultStyles: { p: { fontSize: 7, color: '#475569', margin: [0, 0, 0, 4], alignment: 'justify' }, strong: { bold: true, color: '#0f172a' } }
+        defaultStyles: { p: { fontSize: 6.4, color: '#475569', margin: [0, 0, 0, 3], alignment: 'justify', lineHeight: 1.04 }, strong: { bold: true, color: '#0f172a' } }
       });
       const contenidoPropuestaFormateado = tipoDocumento === 'PROPUESTA' && contenidoPropuesta?.trim()
         ? htmlToPdfmake(contenidoPropuesta, {
@@ -486,7 +524,7 @@ export default function TamikaERP() {
         : [contenidoPropuestaFormateado];
 
       const transparentPixel = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-      const fechaPdf = d.toLocaleDateString('es-VE');
+      const fechaPdf = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
       const sidebarLine = (text, index) => ({
         text,
         fontSize: index === 0 ? 6.4 : 5.4,
@@ -513,22 +551,22 @@ export default function TamikaERP() {
           body: [
             [{
               text: nombreDocumento,
-              fontSize: nombreDocumento.length > 10 ? 24.5 : 25.5,
+              fontSize: nombreDocumento.length > 10 ? 23 : 24,
               bold: true,
               color: '#333333',
-              alignment: 'right',
-              margin: [0, 0, 0, 10],
-            }],
-            [{
-              text: `Fecha: ${fechaPdf}`,
-              fontSize: 9.2,
-              color: '#555555',
               alignment: 'right',
               margin: [0, 0, 0, 8],
             }],
             [{
+              text: `Fecha: ${fechaPdf}`,
+              fontSize: 8.5,
+              color: '#555555',
+              alignment: 'right',
+              margin: [0, 0, 0, 7],
+            }],
+            [{
               text: etiquetaNumeroPdf,
-              fontSize: 9.2,
+              fontSize: 8.5,
               bold: true,
               color: '#444444',
               alignment: 'right',
@@ -537,20 +575,23 @@ export default function TamikaERP() {
           ],
         },
         layout: 'noBorders',
-        absolutePosition: { x: 350, y: 45 },
+        absolutePosition: { x: 372, y: 47 },
       };
 
       const docDefinition = {
-        pageSize: 'A4',
-        pageMargins: [150, 136, 18, 28],
+        pageSize: 'LETTER',
+        pageMargins: [154, 132, 24, 28],
         background: function(currentPage, pageSize) {
           return [
             {
               canvas: [
-                { type: 'rect', x: 10, y: 15, w: 575, h: 112, color: '#d9d9d9' },
-                { type: 'rect', x: 10, y: 132, w: 130, h: 695, color: '#eeeeee' },
+                { type: 'rect', x: 12, y: 18, w: pageSize.width - 24, h: 108, color: '#d9d9d9' },
+                { type: 'rect', x: 12, y: 132, w: 130, h: pageSize.height - 150, color: '#eeeeee' },
               ]
             },
+            logoBase64
+              ? { image: logoBase64, width: 250, opacity: 0.045, absolutePosition: { x: 248, y: 300 } }
+              : { text: '', absolutePosition: { x: 250, y: 300 } },
             { image: logoBase64 || transparentPixel, width: 66, absolutePosition: { x: 22, y: 31 } },
             { text: 'Servicios\nTamika 0302,C.A', fontSize: 20, bold: true, color: '#333333', lineHeight: 0.84, absolutePosition: { x: 92, y: 35 } },
             { text: 'RIF.: J-50634330-4', fontSize: 12, color: '#444444', absolutePosition: { x: 95, y: 92 } },
@@ -561,12 +602,12 @@ export default function TamikaERP() {
               ? { image: logoBase64, width: 92, opacity: 0.08, absolutePosition: { x: 30, y: 558 } }
               : { text: '', absolutePosition: { x: 34, y: 560 } },
             firmaUnificadaBase64
-              ? { image: firmaUnificadaBase64, width: 138, opacity: 0.95, absolutePosition: { x: 6, y: 646 } }
+              ? { image: firmaUnificadaBase64, width: 150, opacity: 0.95, absolutePosition: { x: 2, y: 610 } }
               : { text: '', absolutePosition: { x: 18, y: 662 } },
           ];
         },
         header: function(currentPage, pageCount) {
-          return { text: `(${currentPage}/${pageCount})`, fontSize: 7, bold: true, color: '#444444', absolutePosition: { x: 560, y: 136 } };
+          return { text: `(${currentPage}/${pageCount})`, fontSize: 7, bold: true, color: '#444444', absolutePosition: { x: 575, y: 136 } };
         },
 
         content: [
@@ -613,19 +654,8 @@ export default function TamikaERP() {
             ]
           },
 
-          { text: 'TÉRMINOS Y CONDICIONES GENERALES', fontSize: 7.5, color: '#0f172a', bold: true, margin: [0, 0, 0, 6] },
+          { text: 'TÉRMINOS Y CONDICIONES GENERALES', fontSize: 7, color: '#0f172a', bold: true, margin: [0, 0, 0, 5] },
           ...terminosFormateados,
-          {
-            unbreakable: true,
-            alignment: 'center',
-            margin: [0, 24, 0, 0],
-            stack: [
-              firmaUnificadaBase64 ? { image: firmaUnificadaBase64, width: 170, alignment: 'center', margin: [0, 0, 0, 4] } : { text: '' },
-              { text: 'Frank Salazar', bold: true, fontSize: 8, color: '#0f172a' },
-              { text: 'Servicios Tamika 0302, C.A.', fontSize: 7, color: '#334155' },
-              { text: '+584142087167 | frank.salazar@serviciostamika.com', fontSize: 7, color: '#334155' },
-            ]
-          },
         ]
       };
 
@@ -692,6 +722,10 @@ export default function TamikaERP() {
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'cotizacion', label: 'Propuestas', icon: '📝' },
     { id: 'contabilidad', label: 'Contabilidad', icon: '💼' },
+    { id: 'productos', label: 'Productos', icon: '📦' },
+    { id: 'servicios', label: 'Servicios', icon: '🧰' },
+    { id: 'starlink', label: 'Starlink', icon: '🛰️' },
+    { id: 'nomina', label: 'Nómina', icon: '👷' },
     { id: 'reportes', label: 'Reportes', icon: '📑' },
     { id: 'catalogos', label: 'Catálogos', icon: '🗂️' },
     ...(authUser?.rol === 'ADMIN' ? [{ id: 'usuarios', label: 'Usuarios', icon: '👥' }, { id: 'auditoria', label: 'Auditoría', icon: '🛡️' }] : []),
@@ -779,6 +813,22 @@ export default function TamikaERP() {
           <ReportesContablesView clientes={clientes} apiFetch={apiFetch} />
         )}
 
+        {activeView === 'productos' && (
+          <CatalogosEnterpriseView apiFetch={apiFetch} initialTab="productos" />
+        )}
+
+        {activeView === 'servicios' && (
+          <CatalogosEnterpriseView apiFetch={apiFetch} initialTab="servicios" />
+        )}
+
+        {activeView === 'starlink' && (
+          <StarlinkView clientes={clientes} apiFetch={apiFetch} onChanged={cargarDatos} />
+        )}
+
+        {activeView === 'nomina' && (
+          <NominaView apiFetch={apiFetch} onChanged={cargarDatos} />
+        )}
+
         {activeView === 'usuarios' && authUser?.rol === 'ADMIN' && (
           <UsuariosView apiFetch={apiFetch} />
         )}
@@ -789,33 +839,38 @@ export default function TamikaERP() {
 
         {/* CATALOGOS */}
         {activeView === 'catalogos' && (
-          <section className="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
-            <h2 className="text-xl font-bold mb-4">{editandoId ? 'Editar Cliente' : 'Gestión de Clientes'}</h2>
-            <form onSubmit={guardarCliente} className="grid grid-cols-1 gap-3 mb-6 p-4 rounded-xl border bg-slate-50 items-end sm:grid-cols-2 xl:grid-cols-4">
-              <div>
-                <label className="text-xs text-slate-500 font-bold">ID Cliente</label>
-                <div className="flex gap-2">
-                  <input type="text" value={nuevoCodigoCliente} onChange={(e) => setNuevoCodigoCliente(e.target.value)} placeholder="CLI-2026-0001" className="w-full border rounded-lg px-3 py-2 text-sm outline-none" />
-                  <button type="button" onClick={cargarCodigoClienteAuto} className="rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700">Auto</button>
+          <div className="space-y-6">
+            <section className="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
+              <h2 className="text-xl font-bold mb-4">{editandoId ? 'Editar Cliente' : 'Gestión de Clientes'}</h2>
+              <form onSubmit={guardarCliente} className="grid grid-cols-1 gap-3 mb-6 p-4 rounded-xl border bg-slate-50 items-end sm:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <label className="text-xs text-slate-500 font-bold">ID Cliente</label>
+                  <div className="flex gap-2">
+                    <input type="text" value={nuevoCodigoCliente} onChange={(e) => setNuevoCodigoCliente(e.target.value)} placeholder="CLI-2026-0001" className="w-full border rounded-lg px-3 py-2 text-sm outline-none" />
+                    <button type="button" onClick={cargarCodigoClienteAuto} className="rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700">Auto</button>
+                  </div>
                 </div>
+                <div><label className="text-xs text-slate-500 font-bold">Razón Social</label><input type="text" required value={nuevoNombre} onChange={(e) => setNuevoNombre(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
+                <div><label className="text-xs text-slate-500 font-bold">Alias (Corto para PDF)</label><input type="text" placeholder="Ej: MPPOP" value={nuevoAlias} onChange={(e) => setNuevoAlias(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
+                <div><label className="text-xs text-slate-500 font-bold">RIF</label><input type="text" required value={nuevoRif} onChange={(e) => setNuevoRif(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
+                <div><label className="text-xs text-slate-500 font-bold">Teléfono</label><input type="text" value={nuevoTelefono} onChange={(e) => setNuevoTelefono(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
+                <div><label className="text-xs text-slate-500 font-bold">Email</label><input type="email" value={nuevoEmail} onChange={(e) => setNuevoEmail(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
+                <div className="sm:col-span-2"><label className="text-xs text-slate-500 font-bold">Dirección Fiscal</label><input type="text" value={nuevaDir} onChange={(e) => setNuevaDir(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
+                <div><button type="submit" className="w-full py-2 text-white bg-slate-900 rounded-lg text-sm font-medium">Guardar</button></div>
+              </form>
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full min-w-[760px] text-left border-collapse">
+                  <thead><tr className="bg-slate-100 text-sm"><th className="p-3">ID</th><th className="p-3">Nombre</th><th className="p-3">Alias</th><th className="p-3">RIF</th><th className="p-3">Contacto</th><th className="p-3 text-right">Acción</th></tr></thead>
+                  <tbody className="text-sm">
+                    {clientes.map(cli => (
+                      <tr key={cli.id} className="border-b hover:bg-slate-50"><td className="p-3 font-mono text-xs font-bold text-slate-600">{cli.codigoCliente || '-'}</td><td className="p-3 font-medium">{cli.nombre}</td><td className="p-3 font-bold text-indigo-600">{cli.alias || '-'}</td><td className="p-3 text-slate-500">{cli.rif}</td><td className="p-3 text-slate-500"><span className="block">{cli.telefono || '-'}</span><span className="text-xs">{cli.email || ''}</span></td><td className="p-3 text-right"><button onClick={() => iniciarEdicion(cli)} className="text-blue-600 font-medium mr-4">Editar</button><button onClick={() => eliminarCliente(cli.id)} className="text-red-500 font-medium">Eliminar</button></td></tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div><label className="text-xs text-slate-500 font-bold">Razón Social</label><input type="text" required value={nuevoNombre} onChange={(e) => setNuevoNombre(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
-              <div><label className="text-xs text-slate-500 font-bold">Alias (Corto para PDF)</label><input type="text" placeholder="Ej: MPPOP" value={nuevoAlias} onChange={(e) => setNuevoAlias(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
-              <div><label className="text-xs text-slate-500 font-bold">RIF</label><input type="text" required value={nuevoRif} onChange={(e) => setNuevoRif(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
-              <div><label className="text-xs text-slate-500 font-bold">Teléfono</label><input type="text" value={nuevoTelefono} onChange={(e) => setNuevoTelefono(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
-              <div><label className="text-xs text-slate-500 font-bold">Email</label><input type="email" value={nuevoEmail} onChange={(e) => setNuevoEmail(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
-              <div className="sm:col-span-2"><label className="text-xs text-slate-500 font-bold">Dirección Fiscal</label><input type="text" value={nuevaDir} onChange={(e) => setNuevaDir(e.target.value)} className="w-full border rounded-lg px-3 py-2 text-sm outline-none" /></div>
-              <div><button type="submit" className="w-full py-2 text-white bg-slate-900 rounded-lg text-sm font-medium">Guardar</button></div>
-            </form>
-            <table className="w-full text-left border-collapse">
-              <thead><tr className="bg-slate-100 text-sm"><th className="p-3">ID</th><th className="p-3">Nombre</th><th className="p-3">Alias</th><th className="p-3">RIF</th><th className="p-3">Contacto</th><th className="p-3 text-right">Acción</th></tr></thead>
-              <tbody className="text-sm">
-                {clientes.map(cli => (
-                  <tr key={cli.id} className="border-b hover:bg-slate-50"><td className="p-3 font-mono text-xs font-bold text-slate-600">{cli.codigoCliente || '-'}</td><td className="p-3 font-medium">{cli.nombre}</td><td className="p-3 font-bold text-indigo-600">{cli.alias || '-'}</td><td className="p-3 text-slate-500">{cli.rif}</td><td className="p-3 text-slate-500"><span className="block">{cli.telefono || '-'}</span><span className="text-xs">{cli.email || ''}</span></td><td className="p-3 text-right"><button onClick={() => iniciarEdicion(cli)} className="text-blue-600 font-medium mr-4">Editar</button><button onClick={() => eliminarCliente(cli.id)} className="text-red-500 font-medium">Eliminar</button></td></tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
+            </section>
+            <CatalogosEnterpriseView apiFetch={apiFetch} initialTab="servicios" compact />
+          </div>
         )}
 
         {/* PROPUESTAS */}
@@ -965,10 +1020,11 @@ export default function TamikaERP() {
 
              <div className="border rounded-xl overflow-x-auto shadow-sm">
                <table className="w-full text-left text-sm min-w-max">
-                 <thead className="bg-slate-800 text-white">
-                   <tr>
-                     <th className="p-3 w-1/3">Descripción</th>
-                     {advMode && <th className="p-3 text-center bg-indigo-600">Costo Base($)</th>}
+                  <thead className="bg-slate-800 text-white">
+                    <tr>
+                      <th className="p-3 w-56">Origen</th>
+                      <th className="p-3 w-1/3">Descripción</th>
+                      {advMode && <th className="p-3 text-center bg-indigo-600">Costo Base($)</th>}
                      <th className="p-3 text-center w-16">Cant.</th>
                      {advMode && <><th className="p-3 text-center w-16 bg-indigo-600">%G</th><th className="p-3 text-center w-16 bg-indigo-600">%R</th><th className="p-3 text-center w-16 bg-indigo-600">%C</th><th className="p-3 text-center w-16 bg-indigo-600">Rel.</th></>}
                      <th className="p-3 text-right">P. Unit ($)</th>
@@ -979,9 +1035,28 @@ export default function TamikaERP() {
                  <tbody>
                    {itemsCoti.map(item => {
                      const pUnitCalc = getPUnitario(item);
-                     return (
-                     <tr key={item.id} className="border-b hover:bg-slate-50 align-top">
-                       <td className="p-2"><textarea value={item.desc} onChange={(e)=>actualizarItem(item.id, 'desc', e.target.value)} rows={3} className="w-full border rounded px-2 py-2 outline-none resize-y min-h-[60px]" /></td>
+                      return (
+                      <tr key={item.id} className="border-b hover:bg-slate-50 align-top">
+                        <td className="p-2">
+                          <select value={item.catalogoTipo || 'MANUAL'} onChange={(e)=>actualizarCatalogoItem(item.id, e.target.value, '')} className="mb-2 w-full border rounded px-2 py-1 text-xs font-bold">
+                            <option value="MANUAL">Ítem manual</option>
+                            <option value="PRODUCTO">Producto</option>
+                            <option value="SERVICIO">Servicio</option>
+                          </select>
+                          {item.catalogoTipo === 'PRODUCTO' && (
+                            <select value={item.productoId || ''} onChange={(e)=>actualizarCatalogoItem(item.id, 'PRODUCTO', e.target.value)} className="w-full border rounded px-2 py-1 text-xs">
+                              <option value="">Selecciona producto</option>
+                              {productos.filter((producto) => producto.activo).map((producto) => <option key={producto.id} value={producto.id}>{producto.codigoProducto ? `${producto.codigoProducto} - ` : ''}{producto.nombre}</option>)}
+                            </select>
+                          )}
+                          {item.catalogoTipo === 'SERVICIO' && (
+                            <select value={item.servicioId || ''} onChange={(e)=>actualizarCatalogoItem(item.id, 'SERVICIO', e.target.value)} className="w-full border rounded px-2 py-1 text-xs">
+                              <option value="">Selecciona servicio</option>
+                              {servicios.filter((servicio) => servicio.activo).map((servicio) => <option key={servicio.id} value={servicio.id}>{servicio.codigoServicio ? `${servicio.codigoServicio} - ` : ''}{servicio.nombre}</option>)}
+                            </select>
+                          )}
+                        </td>
+                        <td className="p-2"><textarea value={item.desc} onChange={(e)=>actualizarItem(item.id, 'desc', e.target.value)} rows={3} className="w-full border rounded px-2 py-2 outline-none resize-y min-h-[60px]" /></td>
                        {advMode && <td className="p-2"><input type="text" value={item.costo} onChange={(e)=>actualizarItem(item.id, 'costo', e.target.value)} className="w-20 border border-indigo-200 bg-indigo-50 rounded px-2 py-1 text-center" /></td>}
                        <td className="p-2"><input type="text" value={item.cant} onChange={(e)=>actualizarItem(item.id, 'cant', e.target.value)} className="w-full border rounded px-2 py-1 text-center" /></td>
                        {advMode && <>
@@ -997,8 +1072,8 @@ export default function TamikaERP() {
                    )})}
                  </tbody>
                </table>
-               <div className="p-3 bg-slate-50 border-t"><button onClick={agregarItemCoti} className="px-4 py-2 bg-emerald-600 text-white rounded font-bold text-sm">+ Añadir Servicio</button></div>
-             </div>
+                <div className="p-3 bg-slate-50 border-t"><button onClick={agregarItemCoti} className="px-4 py-2 bg-emerald-600 text-white rounded font-bold text-sm">+ Añadir ítem</button></div>
+              </div>
 
              <div className="flex flex-col md:flex-row gap-6">
                <div className="flex-1"><label className="text-xs text-slate-500 font-bold uppercase mb-2 block">Términos y Condiciones</label><ReactQuill theme="snow" value={condiciones} onChange={setCondiciones} className="bg-white h-64 pb-10" /></div>

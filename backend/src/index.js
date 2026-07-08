@@ -3,6 +3,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
+const { registerEnterpriseRoutes } = require('./modules/enterprise/routes');
 
 const prisma = new PrismaClient();
 const app = express();
@@ -18,6 +19,7 @@ const PENDIENTE_ESTADOS = ['PENDIENTE', 'VENCIDO'];
 const DOCUMENTO_TIPOS = ['PROPUESTA', 'PRESUPUESTO'];
 const DOCUMENTO_ESTADOS = ['BORRADOR', 'APROBADO', 'CONVERTIDO', 'FACTURADO', 'ANULADO'];
 const TASA_FUENTES = ['BCV_API', 'MANUAL', 'CACHE', 'FALLBACK'];
+const MOVIMIENTO_CATEGORIAS = ['Servicio', 'Producto', 'Nomina', 'Pago de factura', 'Suscripcion', 'Otro'];
 const DEFAULT_BCV_API_URL = 'https://ve.dolarapi.com/v1/dolares/oficial';
 const BCV_API_TIMEOUT_MS = readPositiveNumber(process.env.BCV_API_TIMEOUT_MS, 5000);
 const BCV_API_CACHE_TTL_SECONDS = readPositiveNumber(process.env.BCV_API_CACHE_TTL_SECONDS, 3600);
@@ -368,6 +370,7 @@ const normalizeMovimientoPayload = async (body) => {
   const errors = [];
   const tipo = body.tipo;
   const estado = body.estado || 'PENDIENTE';
+  const categoria = body.categoria?.toString().trim() || null;
   const montoUsd = toNumber(body.montoUsd);
   let tasaBcv = toNumber(body.tasaBcv);
   const montoBsInput = toNumber(body.montoBs);
@@ -387,6 +390,7 @@ const normalizeMovimientoPayload = async (body) => {
   if (body.fechaVencimiento && !fechaVencimiento) errors.push('fechaVencimiento debe ser valida.');
   if (body.montoBs !== undefined && body.montoBs !== null && body.montoBs !== '' && (Number.isNaN(montoBsInput) || montoBsInput < 0)) errors.push('montoBs debe ser numerico y mayor o igual a 0.');
   if (tasaFuente && !TASA_FUENTES.includes(tasaFuente)) errors.push('tasaFuente debe ser valida.');
+  if (categoria && !MOVIMIENTO_CATEGORIAS.includes(categoria)) errors.push('categoria debe ser valida.');
 
   if (errors.length) return { errors };
 
@@ -409,6 +413,7 @@ const normalizeMovimientoPayload = async (body) => {
   return {
     data: {
       tipo,
+      categoria,
       concepto: body.concepto.toString().trim(),
       descripcion: body.descripcion?.toString().trim() || null,
       montoUsd,
@@ -422,6 +427,10 @@ const normalizeMovimientoPayload = async (body) => {
       estado,
       clienteId: body.clienteId || null,
       proveedorId: body.proveedorId?.toString().trim() || null,
+      productoId: body.productoId || null,
+      servicioId: body.servicioId || null,
+      tipoProductoId: body.tipoProductoId || null,
+      tipoServicioId: body.tipoServicioId || null,
       referencia: body.referencia?.toString().trim() || null,
     },
   };
@@ -491,8 +500,11 @@ const buildContabilidadWhere = (query) => {
 
   if (query.tipo && MOVIMIENTO_TIPOS.includes(query.tipo)) filters.push({ tipo: query.tipo });
   if (query.estado && MOVIMIENTO_ESTADOS.includes(query.estado)) filters.push({ estado: query.estado });
+  if (query.categoria && MOVIMIENTO_CATEGORIAS.includes(query.categoria)) filters.push({ categoria: query.categoria });
   if (query.clienteId) filters.push({ clienteId: query.clienteId.toString() });
   if (query.proveedorId) filters.push({ proveedorId: { contains: query.proveedorId.toString().trim(), mode: 'insensitive' } });
+  if (query.productoId) filters.push({ productoId: query.productoId.toString() });
+  if (query.servicioId) filters.push({ servicioId: query.servicioId.toString() });
 
   const desde = parseDate(query.desde);
   const hasta = parseDate(query.hasta);
@@ -512,11 +524,20 @@ const buildContabilidadWhere = (query) => {
         { concepto: { contains: buscar, mode: 'insensitive' } },
         { referencia: { contains: buscar, mode: 'insensitive' } },
         { descripcion: { contains: buscar, mode: 'insensitive' } },
+        { categoria: { contains: buscar, mode: 'insensitive' } },
       ],
     });
   }
 
   return filters.length ? { AND: filters } : {};
+};
+
+const movimientoInclude = {
+  cliente: true,
+  producto: { include: { tipoProducto: true } },
+  servicio: { include: { tipoServicio: true } },
+  tipoProducto: true,
+  tipoServicio: true,
 };
 
 const generarCodigoCliente = async (tx, fecha = new Date()) => {
@@ -735,6 +756,8 @@ app.post('/api/auth/logout', authenticateToken, async (req, res) => {
 });
 
 app.use('/api', authenticateToken);
+
+registerEnterpriseRoutes(app, { prisma, logAudit, serializeError });
 
 // USUARIOS
 const parseActivoUsuario = (value) => {
@@ -1173,13 +1196,15 @@ app.post('/api/tasas', async (req, res) => {
 // DASHBOARD
 app.get('/api/dashboard/resumen', async (req, res) => {
   try {
-    const [totalClientes, totalCotizaciones, ventas, movimientos, ultimosMovimientos] = await Promise.all([
+    const [totalClientes, totalProveedores, totalProductos, totalCotizaciones, ventas, movimientos, ultimosMovimientos] = await Promise.all([
       prisma.cliente.count(),
+      prisma.proveedor.count({ where: { activo: true } }),
+      prisma.producto.count({ where: { activo: true } }),
       prisma.cotizacion.count({ where: { deletedAt: null } }),
       prisma.venta.findMany(),
       prisma.movimientoContable.findMany(),
       prisma.movimientoContable.findMany({
-        include: { cliente: true },
+        include: movimientoInclude,
         orderBy: { fechaMovimiento: 'desc' },
         take: 6,
       }),
@@ -1190,8 +1215,8 @@ app.get('/api/dashboard/resumen', async (req, res) => {
     res.json({
       kpis: {
         totalClientes,
-        totalProveedores: 0,
-        totalProductos: 0,
+        totalProveedores,
+        totalProductos,
         totalCotizaciones,
         totalVentas: ventas.length,
         ingresosMes: resumen.ingresosMes,
@@ -1236,7 +1261,7 @@ app.get('/api/reportes/contabilidad', async (req, res) => {
     const where = buildContabilidadWhere(req.query);
     const movimientos = await prisma.movimientoContable.findMany({
       where,
-      include: { cliente: true },
+      include: movimientoInclude,
       orderBy: [{ fechaMovimiento: 'asc' }, { createdAt: 'asc' }],
     });
 
@@ -1285,7 +1310,7 @@ app.get('/api/contabilidad', async (req, res) => {
     const where = buildContabilidadWhere(req.query);
     const movimientos = await prisma.movimientoContable.findMany({
       where,
-      include: { cliente: true },
+      include: movimientoInclude,
       orderBy: { fechaMovimiento: 'desc' },
     });
 
@@ -1299,7 +1324,7 @@ app.get('/api/contabilidad/:id', async (req, res) => {
   try {
     const movimiento = await prisma.movimientoContable.findUnique({
       where: { id: req.params.id },
-      include: { cliente: true },
+      include: movimientoInclude,
     });
 
     if (!movimiento) return serializeError(res, 404, 'Movimiento no encontrado.');
@@ -1316,7 +1341,7 @@ app.post('/api/contabilidad', async (req, res) => {
 
     const movimiento = await prisma.movimientoContable.create({
       data: normalized.data,
-      include: { cliente: true },
+      include: movimientoInclude,
     });
 
     await logAudit(req, {
@@ -1359,7 +1384,7 @@ app.put('/api/contabilidad/:id', async (req, res) => {
     const movimiento = await prisma.movimientoContable.update({
       where: { id: req.params.id },
       data: normalized.data,
-      include: { cliente: true },
+      include: movimientoInclude,
     });
 
     await logAudit(req, {

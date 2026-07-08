@@ -20,6 +20,9 @@ model Cliente {
   ventas               Venta[]
   cotizaciones         Cotizacion[]
   movimientosContables MovimientoContable[]
+  cuentasStarlink      CuentaStarlink[]
+  antenasStarlink      AntenaStarlink[]
+  pagosStarlink        PagoStarlink[]
 }
 
 model Venta {
@@ -89,6 +92,7 @@ enum MovimientoEstado {
 model MovimientoContable {
   id                String           @id @default(uuid())
   tipo              MovimientoTipo
+  categoria         String?
   concepto          String
   descripcion       String?
   montoUsd          Float
@@ -103,6 +107,14 @@ model MovimientoContable {
   clienteId         String?
   cliente           Cliente?         @relation(fields: [clienteId], references: [id])
   proveedorId       String?
+  productoId        String?
+  producto          Producto?        @relation(fields: [productoId], references: [id])
+  servicioId        String?
+  servicio          Servicio?        @relation(fields: [servicioId], references: [id])
+  tipoProductoId    String?
+  tipoProducto      TipoProducto?    @relation(fields: [tipoProductoId], references: [id])
+  tipoServicioId    String?
+  tipoServicio      TipoServicio?    @relation(fields: [tipoServicioId], references: [id])
   referencia        String?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
@@ -139,4 +151,161 @@ model ConfiguracionSistema {
   valor     Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model TipoServicio {
+  id                   String               @id @default(uuid())
+  nombre               String               @unique
+  descripcion          String?
+  activo               Boolean              @default(true)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  servicios            Servicio[]
+  movimientosContables MovimientoContable[]
+}
+
+model Servicio {
+  id                   String               @id @default(uuid())
+  codigoServicio       String?              @unique
+  nombre               String
+  descripcion          String?
+  tipoServicioId       String?
+  tipoServicio         TipoServicio?        @relation(fields: [tipoServicioId], references: [id])
+  precioUsd            Float                @default(0)
+  activo               Boolean              @default(true)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  movimientosContables MovimientoContable[]
+}
+
+model TipoProducto {
+  id                   String               @id @default(uuid())
+  nombre               String               @unique
+  descripcion          String?
+  activo               Boolean              @default(true)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  productos            Producto[]
+  movimientosContables MovimientoContable[]
+}
+
+model Producto {
+  id                   String               @id @default(uuid())
+  codigoProducto       String?              @unique
+  nombre               String
+  descripcion          String?
+  tipoProductoId       String?
+  tipoProducto         TipoProducto?        @relation(fields: [tipoProductoId], references: [id])
+  precioUsd            Float                @default(0)
+  stock                Int?
+  activo               Boolean              @default(true)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  movimientosContables MovimientoContable[]
+}
+
+model Proveedor {
+  id              String   @id @default(uuid())
+  codigoProveedor String?  @unique
+  nombre          String
+  rif             String?  @unique
+  direccion       String?
+  telefono        String?
+  email           String?
+  tipoEmpresa     String?
+  activo          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model CuentaStarlink {
+  id             String            @id @default(uuid())
+  clienteId      String
+  cliente        Cliente           @relation(fields: [clienteId], references: [id])
+  nombreCuenta   String
+  correoCuenta   String?
+  referencia     String?
+  tipoServicio   String            @default("SERVICIO_COMPLETO")
+  montoMensualUsd Float?
+  fechaCorte     DateTime?
+  estado         String            @default("ACTIVA")
+  observaciones  String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  antenas        AntenaStarlink[]
+  pagos          PagoStarlink[]
+}
+
+model AntenaStarlink {
+  id               String          @id @default(uuid())
+  clienteId        String
+  cliente          Cliente         @relation(fields: [clienteId], references: [id])
+  cuentaStarlinkId String?
+  cuentaStarlink   CuentaStarlink? @relation(fields: [cuentaStarlinkId], references: [id])
+  numeroKit        String?         @unique
+  numeroSerie      String?
+  nombreAntena     String
+  ubicacion        String?
+  fechaRegistro    DateTime        @default(now())
+  fechaCorte       DateTime?
+  tipoServicio     String          @default("SERVICIO_COMPLETO")
+  estado           String          @default("ACTIVA")
+  observaciones    String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+}
+
+model PagoStarlink {
+  id                  String          @id @default(uuid())
+  cuentaStarlinkId    String
+  cuentaStarlink      CuentaStarlink  @relation(fields: [cuentaStarlinkId], references: [id])
+  clienteId           String
+  cliente             Cliente         @relation(fields: [clienteId], references: [id])
+  periodo             String
+  montoUsd            Float
+  tasaBcv             Float?
+  montoBs             Float?
+  fechaPago           DateTime?
+  fechaCorte          DateTime
+  estado              String          @default("PENDIENTE")
+  referencia          String?
+  movimientoContableId String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+}
+
+model Empleado {
+  id              String   @id @default(uuid())
+  codigoEmpleado  String?  @unique
+  nombre          String
+  apellido        String?
+  cedula          String?  @unique
+  cargo           String?
+  telefono        String?
+  email           String?
+  fechaIngreso    DateTime?
+  salarioBaseUsd  Float?
+  activo          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  nominas         Nomina[]
+}
+
+model Nomina {
+  id                  String   @id @default(uuid())
+  empleadoId          String
+  empleado            Empleado @relation(fields: [empleadoId], references: [id])
+  periodo             String
+  salarioBaseUsd      Float
+  bonosUsd            Float    @default(0)
+  deduccionesUsd      Float    @default(0)
+  totalUsd            Float
+  tasaBcv             Float?
+  totalBs             Float?
+  fechaPago           DateTime?
+  estado              String   @default("PENDIENTE")
+  referencia          String?
+  movimientoContableId String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }

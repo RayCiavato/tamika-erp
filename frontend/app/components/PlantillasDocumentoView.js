@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 
 const ReactQuill = dynamic(async () => {
@@ -165,7 +165,25 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
   const [saving, setSaving] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [buscar, setBuscar] = useState('');
-  const [tableSelection, setTableSelection] = useState('Selecciona una celda dentro de una tabla para editar filas, columnas o unificar.');
+  const [expandedBuilder, setExpandedBuilder] = useState(false);
+  const [tableSelection, setTableSelection] = useState('Sin celda seleccionada');
+
+  useEffect(() => {
+    if (!expandedBuilder) return undefined;
+
+    const originalOverflow = document.body.style.overflow;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setExpandedBuilder(false);
+    };
+
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [expandedBuilder]);
 
   const readJson = async (res, fallback) => {
     const data = await res.json().catch(() => null);
@@ -229,7 +247,7 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
       updateForm(field, editor.root.innerHTML);
       editor.focus();
       activeCellsRef.current[field] = null;
-      setTableSelection('Tabla actualizada. Selecciona una celda para otra accion.');
+      setTableSelection('Tabla actualizada');
       setMensaje(message);
     };
 
@@ -349,6 +367,7 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
   const limpiar = () => {
     setForm(emptyForm);
     setMensaje('');
+    setTableSelection('Sin celda seleccionada');
   };
 
   const editar = (plantilla) => {
@@ -426,22 +445,30 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
+      <section className={expandedBuilder
+        ? 'fixed inset-0 z-50 overflow-y-auto bg-slate-100 p-4 sm:p-6'
+        : 'rounded-2xl border border-slate-200 bg-white p-6 shadow-sm'}
+      >
+        <div className={`${expandedBuilder ? 'sticky top-0 z-10 -mx-4 -mt-4 border-b border-slate-200 bg-white/95 px-4 py-4 shadow-sm backdrop-blur sm:-mx-6 sm:-mt-6 sm:px-6' : 'border-b border-slate-200 pb-5'} flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between`}>
           <div>
             <p className="text-xs font-extrabold uppercase tracking-wide text-teal-700">Documentos comerciales</p>
             <h2 className="text-2xl font-extrabold text-slate-950">Plantillas personalizadas</h2>
             <p className="text-sm text-slate-500">Crea bases reutilizables para propuestas y presupuestos.</p>
           </div>
-          <button type="button" onClick={limpiar} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-200">
-            Nueva plantilla
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setExpandedBuilder((prev) => !prev)} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-slate-800">
+              {expandedBuilder ? 'Vista normal' : 'Pantalla completa'}
+            </button>
+            <button type="button" onClick={limpiar} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-200">
+              Nueva plantilla
+            </button>
+          </div>
         </div>
 
         {mensaje && <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-700">{mensaje}</div>}
 
-        <form onSubmit={guardar} className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(320px,420px)_1fr]">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <form onSubmit={guardar} className={`${expandedBuilder ? 'mx-auto mt-5 grid max-w-[1800px] grid-cols-1 gap-5 xl:grid-cols-[380px_minmax(0,1fr)]' : 'mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(320px,420px)_1fr]'}`}>
+          <div className={`rounded-xl border border-slate-200 bg-slate-50 p-4 ${expandedBuilder ? 'xl:sticky xl:top-28' : ''}`}>
             <div className="mb-4">
               <p className="text-xs font-extrabold uppercase text-teal-700">Alta y edicion</p>
               <h3 className="text-lg font-extrabold text-slate-950">{form.id ? 'Editar plantilla' : 'Nueva plantilla'}</h3>
@@ -482,24 +509,26 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
           </div>
 
           <div className="space-y-4">
-            <EditorBlock title="Contenido interno" subtitle="Se aplica al bloque editable de propuestas.">
+            <EditorBlock title="Contenido interno" subtitle="Se aplica al bloque editable de propuestas." expanded={expandedBuilder}>
               <SnippetBar
                 onInsert={(html) => insertarBloque('contenidoPropuesta', html)}
                 onTableAction={(action) => ejecutarAccionTabla('contenidoPropuesta', action)}
                 selectionLabel={tableSelection}
+                expanded={expandedBuilder}
               />
               <div onMouseUp={() => capturarCeldaActiva('contenidoPropuesta')} onKeyUp={() => capturarCeldaActiva('contenidoPropuesta')}>
-                <ReactQuill forwardedRef={contenidoEditorRef} theme="snow" value={form.contenidoPropuesta} onChange={(value) => updateForm('contenidoPropuesta', value)} className="bg-white min-h-[220px] pb-10" />
+                <ReactQuill forwardedRef={contenidoEditorRef} theme="snow" value={form.contenidoPropuesta} onChange={(value) => updateForm('contenidoPropuesta', value)} className={`tamika-template-quill bg-white pb-10 ${expandedBuilder ? 'tamika-template-quill-expanded' : ''}`} />
               </div>
             </EditorBlock>
-            <EditorBlock title="Terminos y condiciones" subtitle="Se carga en la seccion final del documento.">
+            <EditorBlock title="Terminos y condiciones" subtitle="Se carga en la seccion final del documento." expanded={expandedBuilder}>
               <SnippetBar
                 onInsert={(html) => insertarBloque('condiciones', html)}
                 onTableAction={(action) => ejecutarAccionTabla('condiciones', action)}
                 selectionLabel={tableSelection}
+                expanded={expandedBuilder}
               />
               <div onMouseUp={() => capturarCeldaActiva('condiciones')} onKeyUp={() => capturarCeldaActiva('condiciones')}>
-                <ReactQuill forwardedRef={condicionesEditorRef} theme="snow" value={form.condiciones} onChange={(value) => updateForm('condiciones', value)} className="bg-white min-h-[220px] pb-10" />
+                <ReactQuill forwardedRef={condicionesEditorRef} theme="snow" value={form.condiciones} onChange={(value) => updateForm('condiciones', value)} className={`tamika-template-quill bg-white pb-10 ${expandedBuilder ? 'tamika-template-quill-expanded' : ''}`} />
               </div>
             </EditorBlock>
           </div>
@@ -554,6 +583,25 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
           </table>
         </div>
       </section>
+      <style jsx global>{`
+        .tamika-template-quill .ql-container {
+          min-height: 260px;
+          font-size: 14px;
+        }
+
+        .tamika-template-quill .ql-editor {
+          min-height: 260px;
+          line-height: 1.55;
+        }
+
+        .tamika-template-quill-expanded .ql-container {
+          min-height: 52vh;
+        }
+
+        .tamika-template-quill-expanded .ql-editor {
+          min-height: 52vh;
+        }
+      `}</style>
     </div>
   );
 }
@@ -567,19 +615,22 @@ function Field({ label, children }) {
   );
 }
 
-function EditorBlock({ title, subtitle, children }) {
+function EditorBlock({ title, subtitle, expanded = false, children }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <div className="mb-3">
+    <div className={`rounded-xl border border-slate-200 bg-slate-50 p-4 ${expanded ? 'shadow-sm' : ''}`}>
+      <div className="mb-3 flex flex-col gap-1 border-b border-slate-200 pb-3 md:flex-row md:items-end md:justify-between">
+        <div>
         <h4 className="text-sm font-extrabold text-slate-900">{title}</h4>
         <p className="text-xs text-slate-500">{subtitle}</p>
+        </div>
+        {expanded && <span className="w-fit rounded-full bg-white px-3 py-1 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">Modo editor</span>}
       </div>
       {children}
     </div>
   );
 }
 
-function SnippetBar({ onInsert, onTableAction, selectionLabel }) {
+function SnippetBar({ onInsert, onTableAction, selectionLabel, expanded = false }) {
   return (
     <div className="mb-3 rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 md:flex-row md:items-center md:justify-between">
@@ -589,10 +640,10 @@ function SnippetBar({ onInsert, onTableAction, selectionLabel }) {
         </div>
         <span className="w-fit rounded-full bg-teal-50 px-3 py-1 text-[11px] font-bold text-teal-700 ring-1 ring-teal-100">PDF ready</span>
       </div>
-      <div className="space-y-4 p-4">
-        <div>
+      <div className={`grid gap-4 p-4 ${expanded ? '2xl:grid-cols-[minmax(260px,0.75fr)_minmax(520px,1.25fr)]' : ''}`}>
+        <div className={expanded ? 'rounded-lg border border-slate-200 bg-slate-50 p-3' : ''}>
           <p className="mb-2 text-[11px] font-extrabold uppercase tracking-wide text-slate-500">Bloques rapidos</p>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+          <div className={`grid grid-cols-2 gap-2 ${expanded ? 'md:grid-cols-2' : 'md:grid-cols-3 xl:grid-cols-6'}`}>
             {snippets.map((snippet) => (
               <button
                 key={snippet.id}
@@ -629,9 +680,6 @@ function SnippetBar({ onInsert, onTableAction, selectionLabel }) {
               </div>
             ))}
           </div>
-        </div>
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
-          Selecciona una celda de la tabla y luego usa las acciones. Las celdas nuevas se crean con texto visible para que puedas editarlas rapido.
         </div>
       </div>
     </div>

@@ -95,6 +95,7 @@ export default function CatalogosEnterpriseView({
   const [mensaje, setMensaje] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [autoCodeLoading, setAutoCodeLoading] = useState('');
   const [tasaEditadaManual, setTasaEditadaManual] = useState(false);
 
   const catalogItems = isProductModule ? productos : servicios;
@@ -132,6 +133,22 @@ export default function CatalogosEnterpriseView({
     };
   }, [buscar, servicios, productos]);
 
+  const buildLocalCatalogCode = (kind) => {
+    const rows = kind === 'servicio' ? servicios : productos;
+    const field = kind === 'servicio' ? 'codigoServicio' : 'codigoProducto';
+    const prefix = kind === 'servicio' ? 'SERV' : 'PROD';
+    const year = new Date().getFullYear();
+    const base = `${prefix}-${year}-`;
+    const ultimo = rows.reduce((acc, row) => {
+      const value = row[field] || '';
+      if (!value.startsWith(base)) return acc;
+      const secuencia = Number.parseInt(value.split('-').at(-1), 10);
+      return Number.isFinite(secuencia) && secuencia > acc ? secuencia : acc;
+    }, 0);
+
+    return `${base}${String(ultimo + 1).padStart(4, '0')}`;
+  };
+
   useEffect(() => {
     setViewMode('registro');
     setAsignacion({ ...emptyAsignacion(), tasaBcv: tasaBcvSincronizada });
@@ -148,8 +165,23 @@ export default function CatalogosEnterpriseView({
   }, [tasaBcvActual?.version, tasaEditadaManual]);
 
   const readJson = async (res, fallback) => {
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || fallback);
+    const raw = await res.text().catch(() => '');
+    let data = {};
+    if (raw) {
+      try {
+        data = JSON.parse(raw);
+      } catch (error) {
+        data = { error: raw };
+      }
+    }
+
+    if (!res.ok) {
+      const details = typeof data.details === 'string'
+        ? data.details
+        : data.details?.message || '';
+      const message = data.error || fallback;
+      throw new Error(details ? `${message} ${details}` : message);
+    }
     return data;
   };
 
@@ -224,8 +256,11 @@ export default function CatalogosEnterpriseView({
     event.preventDefault();
     setMensaje('');
     try {
+      const codigoServicio = servicioForm.codigoServicio.trim()
+        || await generarCodigoCatalogo('servicio', { silent: true });
       const payload = {
         ...servicioForm,
+        codigoServicio,
         tipoServicioId: null,
         tipoServicioNombre: '',
         precioUsd: 0,
@@ -249,8 +284,11 @@ export default function CatalogosEnterpriseView({
     event.preventDefault();
     setMensaje('');
     try {
+      const codigoProducto = productoForm.codigoProducto.trim()
+        || await generarCodigoCatalogo('producto', { silent: true });
       const payload = {
         ...productoForm,
+        codigoProducto,
         tipoProductoId: null,
         tipoProductoNombre: '',
         precioUsd: 0,
@@ -283,14 +321,36 @@ export default function CatalogosEnterpriseView({
     }
   };
 
-  const autoCode = async (kind) => {
+  const generarCodigoCatalogo = async (kind, options = {}) => {
     const endpoint = kind === 'servicio'
       ? '/api/servicios/siguiente-codigo'
       : '/api/productos/siguiente-codigo';
-    const res = await apiFetch(endpoint);
-    const data = await readJson(res, 'No se pudo generar el codigo.');
-    if (kind === 'servicio') setServicioForm((prev) => ({ ...prev, codigoServicio: data.codigoServicio || '' }));
-    if (kind === 'producto') setProductoForm((prev) => ({ ...prev, codigoProducto: data.codigoProducto || '' }));
+    const responseKey = kind === 'servicio' ? 'codigoServicio' : 'codigoProducto';
+
+    if (!options.silent) {
+      setAutoCodeLoading(kind);
+      setMensaje('');
+    }
+
+    try {
+      const res = await apiFetch(endpoint);
+      const data = await readJson(res, 'No se pudo generar el codigo.');
+      return data[responseKey] || buildLocalCatalogCode(kind);
+    } catch (error) {
+      const fallbackCode = buildLocalCatalogCode(kind);
+      if (!options.silent) {
+        setMensaje(`Codigo generado localmente porque la API no respondio: ${fallbackCode}`);
+      }
+      return fallbackCode;
+    } finally {
+      if (!options.silent) setAutoCodeLoading('');
+    }
+  };
+
+  const autoCode = async (kind) => {
+    const code = await generarCodigoCatalogo(kind);
+    if (kind === 'servicio') setServicioForm((prev) => ({ ...prev, codigoServicio: code }));
+    if (kind === 'producto') setProductoForm((prev) => ({ ...prev, codigoProducto: code }));
   };
 
   const crearMovimientoAdquisicion = async () => {
@@ -602,7 +662,7 @@ export default function CatalogosEnterpriseView({
           onClear={resetForms}
           form={(
             <CatalogForm onSubmit={saveProducto}>
-              <CodeField label="Codigo producto" value={productoForm.codigoProducto} onChange={(value) => setProductoForm((prev) => ({ ...prev, codigoProducto: value }))} onAuto={() => autoCode('producto')} />
+              <CodeField label="Codigo producto" value={productoForm.codigoProducto} onChange={(value) => setProductoForm((prev) => ({ ...prev, codigoProducto: value }))} onAuto={() => autoCode('producto')} loading={autoCodeLoading === 'producto'} />
               <Field label="Nombre"><input required value={productoForm.nombre} onChange={(event) => setProductoForm((prev) => ({ ...prev, nombre: event.target.value }))} className="input" /></Field>
               <Field label="Descripcion"><textarea value={productoForm.descripcion} onChange={(event) => setProductoForm((prev) => ({ ...prev, descripcion: event.target.value }))} rows={3} className="input resize-y" /></Field>
               <CheckField label="Activo" checked={productoForm.activo} onChange={(value) => setProductoForm((prev) => ({ ...prev, activo: value }))} />
@@ -631,7 +691,7 @@ export default function CatalogosEnterpriseView({
           onClear={resetForms}
           form={(
             <CatalogForm onSubmit={saveServicio}>
-              <CodeField label="Codigo servicio" value={servicioForm.codigoServicio} onChange={(value) => setServicioForm((prev) => ({ ...prev, codigoServicio: value }))} onAuto={() => autoCode('servicio')} />
+              <CodeField label="Codigo servicio" value={servicioForm.codigoServicio} onChange={(value) => setServicioForm((prev) => ({ ...prev, codigoServicio: value }))} onAuto={() => autoCode('servicio')} loading={autoCodeLoading === 'servicio'} />
               <Field label="Nombre"><input required value={servicioForm.nombre} onChange={(event) => setServicioForm((prev) => ({ ...prev, nombre: event.target.value }))} className="input" /></Field>
               <Field label="Descripcion"><textarea value={servicioForm.descripcion} onChange={(event) => setServicioForm((prev) => ({ ...prev, descripcion: event.target.value }))} rows={3} className="input resize-y" /></Field>
               <CheckField label="Activo" checked={servicioForm.activo} onChange={(value) => setServicioForm((prev) => ({ ...prev, activo: value }))} />
@@ -823,12 +883,14 @@ function Field({ label, children, className = '' }) {
   );
 }
 
-function CodeField({ label, value, onChange, onAuto }) {
+function CodeField({ label, value, onChange, onAuto, loading = false }) {
   return (
     <Field label={label}>
       <div className="flex gap-2">
         <input value={value} onChange={(event) => onChange(event.target.value)} className="input font-mono" />
-        <button type="button" onClick={onAuto} className="rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-100">Auto</button>
+        <button type="button" onClick={onAuto} disabled={loading} className="rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-60">
+          {loading ? '...' : 'Auto'}
+        </button>
       </div>
     </Field>
   );

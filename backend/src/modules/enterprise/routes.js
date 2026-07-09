@@ -110,6 +110,38 @@ const safeAudit = async (logAudit, req, payload) => {
   await logAudit(req, payload);
 };
 
+const errorDetails = (error) => ({
+  code: error?.code || 'UNKNOWN',
+  message: process.env.NODE_ENV === 'production' ? undefined : error?.message,
+});
+
+const handleCodeError = (res, serializeError, error, entity) => {
+  console.error(`No se pudo generar codigo de ${entity}:`, error);
+  if (['P2021', 'P2022'].includes(error?.code)) {
+    return serializeError(
+      res,
+      500,
+      `La base de datos no esta sincronizada para ${entity}. Ejecuta prisma db push antes de generar codigos.`,
+      errorDetails(error),
+    );
+  }
+  return serializeError(res, 500, `No se pudo generar el codigo de ${entity}.`, errorDetails(error));
+};
+
+const handleCatalogWriteError = (res, serializeError, error, { entity, action, duplicateMessage }) => {
+  console.error(`No se pudo ${action} ${entity}:`, error);
+  if (error?.code === 'P2002') return serializeError(res, 409, duplicateMessage, errorDetails(error));
+  if (['P2021', 'P2022'].includes(error?.code)) {
+    return serializeError(
+      res,
+      400,
+      `La base de datos no esta sincronizada para ${entity}. Ejecuta prisma db push antes de guardar.`,
+      errorDetails(error),
+    );
+  }
+  return serializeError(res, 400, `No se pudo ${action} ${entity}.`, errorDetails(error));
+};
+
 const registerTipoRoutes = (app, { prisma, logAudit, serializeError, path, modelName, defaults, entity }) => {
   app.get(`/api/${path}`, async (req, res) => {
     try {
@@ -214,7 +246,7 @@ const registerCatalogRoutes = (app, { prisma, logAudit, serializeError }) => {
     try {
       res.json({ codigoServicio: await prisma.$transaction((tx) => nextCode(tx, 'servicio', 'codigoServicio', 'SERV')) });
     } catch (error) {
-      serializeError(res, 500, 'No se pudo generar el codigo de servicio.');
+      handleCodeError(res, serializeError, error, 'servicio');
     }
   });
 
@@ -222,7 +254,7 @@ const registerCatalogRoutes = (app, { prisma, logAudit, serializeError }) => {
     try {
       res.json({ codigoProducto: await prisma.$transaction((tx) => nextCode(tx, 'producto', 'codigoProducto', 'PROD')) });
     } catch (error) {
-      serializeError(res, 500, 'No se pudo generar el codigo de producto.');
+      handleCodeError(res, serializeError, error, 'producto');
     }
   });
 
@@ -230,7 +262,7 @@ const registerCatalogRoutes = (app, { prisma, logAudit, serializeError }) => {
     try {
       res.json({ codigoProveedor: await prisma.$transaction((tx) => nextCode(tx, 'proveedor', 'codigoProveedor', 'PROV')) });
     } catch (error) {
-      serializeError(res, 500, 'No se pudo generar el codigo de proveedor.');
+      handleCodeError(res, serializeError, error, 'proveedor');
     }
   });
 
@@ -288,8 +320,11 @@ const registerCatalogRoutes = (app, { prisma, logAudit, serializeError }) => {
       });
       res.status(201).json(row);
     } catch (error) {
-      if (error.code === 'P2002') return serializeError(res, 409, 'Ya existe un servicio con ese codigo.');
-      serializeError(res, 400, 'No se pudo crear el servicio.');
+      handleCatalogWriteError(res, serializeError, error, {
+        entity: 'servicio',
+        action: 'crear',
+        duplicateMessage: 'Ya existe un servicio con ese codigo.',
+      });
     }
   });
 
@@ -324,8 +359,11 @@ const registerCatalogRoutes = (app, { prisma, logAudit, serializeError }) => {
       });
       res.json(row);
     } catch (error) {
-      if (error.code === 'P2002') return serializeError(res, 409, 'Ya existe un servicio con ese codigo.');
-      serializeError(res, 400, 'No se pudo actualizar el servicio.');
+      handleCatalogWriteError(res, serializeError, error, {
+        entity: 'servicio',
+        action: 'actualizar',
+        duplicateMessage: 'Ya existe un servicio con ese codigo.',
+      });
     }
   });
 
@@ -401,8 +439,11 @@ const registerCatalogRoutes = (app, { prisma, logAudit, serializeError }) => {
       });
       res.status(201).json(row);
     } catch (error) {
-      if (error.code === 'P2002') return serializeError(res, 409, 'Ya existe un producto con ese codigo.');
-      serializeError(res, 400, 'No se pudo crear el producto.');
+      handleCatalogWriteError(res, serializeError, error, {
+        entity: 'producto',
+        action: 'crear',
+        duplicateMessage: 'Ya existe un producto con ese codigo.',
+      });
     }
   });
 
@@ -440,8 +481,11 @@ const registerCatalogRoutes = (app, { prisma, logAudit, serializeError }) => {
       });
       res.json(row);
     } catch (error) {
-      if (error.code === 'P2002') return serializeError(res, 409, 'Ya existe un producto con ese codigo.');
-      serializeError(res, 400, 'No se pudo actualizar el producto.');
+      handleCatalogWriteError(res, serializeError, error, {
+        entity: 'producto',
+        action: 'actualizar',
+        duplicateMessage: 'Ya existe un producto con ese codigo.',
+      });
     }
   });
 

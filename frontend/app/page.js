@@ -17,6 +17,7 @@ import 'react-quill-new/dist/quill.snow.css';
 const DEFAULT_TERMS = `<p>Los servicios se rigen por los lineamientos de ISO/IEC 27001, NIST CSF.</p><br/><p><strong>Precios:</strong> Los precios est&aacute;n expresados en USD (D&oacute;lares) e incluyen el Impuesto al Valor Agregado (IVA), salvo que se indique lo contrario.</p><p><strong>Validez:</strong> Los precios son v&aacute;lidos &uacute;nicamente para este cliente y negociaci&oacute;n en particular.</p><p><strong>Financiamiento:</strong> Opci&oacute;n de pago en 3 cuotas mensuales (50% inicial y 2 cuotas de 25%) en bol&iacute;vares, calculadas al tipo de cambio oficial del Banco Central de Venezuela (BCV) vigente en la fecha de cada pago.</p><p><strong>Variaciones de Precio:</strong> El precio de todos los productos que componen esta propuesta est&aacute; sujeto a variaci&oacute;n sin previo aviso, seg&uacute;n las condiciones actuales del mercado.</p><p><strong>Aprobaci&oacute;n:</strong> La aprobaci&oacute;n debe ser enviada v&iacute;a correo electr&oacute;nico.</p><p><strong>Validez de la Oferta:</strong> Esta oferta tiene una validez de 07 d&iacute;as h&aacute;biles.</p><p><strong>Confidencialidad:</strong> La informaci&oacute;n relacionada con esta propuesta es absolutamente confidencial y para uso exclusivo de la empresa a quien va dirigida, quien se compromete a mantener y respetar la confidencialidad de la informaci&oacute;n.</p><p><strong>Recursos Humanos:</strong> La empresa que recibe la cotizaci&oacute;n se compromete a no efectuar ofrecimiento alguno de tipo laboral al personal asignado al servicio solicitado durante el desarrollo de este, y hasta por tres (3) a&ntilde;os contados a partir de la fecha de culminaci&oacute;n.</p><p><strong>Costo de Infraestructura:</strong> El costo de infraestructura necesario para la implementaci&oacute;n y funcionamiento del sistema correr&aacute; por cuenta del cliente.</p><p><strong>Garant&iacute;a de Servicio:</strong> Cualquier garant&iacute;a de servicio se especificar&aacute; en un acuerdo por separado y estar&aacute; sujeta a los t&eacute;rminos y condiciones acordados.</p><p><strong>Soporte T&eacute;cnico:</strong> El soporte t&eacute;cnico ser&aacute; proporcionado seg&uacute;n los t&eacute;rminos especificados en la propuesta y no incluye soporte adicional fuera del alcance definido sin un costo adicional.</p><p><strong>Modificaciones:</strong> Cualquier modificaci&oacute;n a los t&eacute;rminos de esta propuesta deber&aacute; ser acordada por ambas partes y documentada formalmente.</p><p><strong>Inicio de Labores:</strong> No se iniciar&aacute;n labores de ning&uacute;n tipo sin la respectiva Orden de Servicio y/o anticipo de EL CLIENTE.</p><p><strong>Impacto de Disposiciones Gubernamentales:</strong> Cualesquiera disposiciones de &iacute;ndole gubernamental cuyo impacto incida de manera directa en el estipendio de Servicios TAMIKA 0302, C.A. ser&aacute; considerado motivo para evaluar, conjuntamente, reajustes en las tarifas o cambios en los t&eacute;rminos comerciales.</p><p><strong>Servicios Incluidos:</strong> Esta oferta no incluye otros servicios o especialidades distintas a las expresamente se&ntilde;aladas.</p>`;
 const DEFAULT_VIGENCIA = '15 días hábiles';
 const DEFAULT_PROPUESTA_CONTENT = `<p><strong>1. Introducción</strong></p><p>Por medio de la presente, Servicios Tamika 0302, C.A. presenta su propuesta de servicios profesionales para la instalación, organización, configuración y puesta en marcha del servicio solicitado.</p><p>La presente propuesta está orientada a entregar una solución organizada, estable, escalable y documentada, alineada con buenas prácticas de infraestructura, seguridad, continuidad operativa y administración centralizada.</p><p><strong>2. Objetivo general</strong></p><p>Ejecutar la instalación, configuración, integración y puesta en producción de la solución requerida, garantizando un entorno ordenado, seguro y preparado para el crecimiento futuro.</p><p><strong>3. Alcance del servicio</strong></p><ul><li>Levantamiento y validación de requerimientos.</li><li>Planificación de actividades y recursos.</li><li>Ejecución de los servicios incluidos en la presente propuesta.</li><li>Pruebas funcionales, entrega y cierre documentado.</li></ul>`;
+const DEFAULT_SALUDO = 'Estimados señores:';
 const DEFAULT_PDF_DATA = {
   clienteCodigo: '',
   clienteNombre: '',
@@ -30,7 +31,7 @@ const DEFAULT_PDF_DATA = {
   empresaTelefono: 'Telefono: +584142087167',
   empresaWeb: 'www.serviciostamika.com',
   proyecto: 'Implementación de servicios tecnológicos y soporte especializado',
-  saludo: 'Estimados señores:',
+  saludo: DEFAULT_SALUDO,
 };
 
 const parseVe = (str) => { if (!str && str !== 0) return 0; if (typeof str === 'number') return str; return parseFloat(str.toString().replace(/\./g, '').replace(',', '.')) || 0; };
@@ -42,6 +43,17 @@ const DOCUMENTO_OPTIONS = [
 ];
 const ESTADO_DOCUMENTO_OPTIONS = ['BORRADOR', 'APROBADO', 'CONVERTIDO', 'FACTURADO', 'ANULADO'];
 const documentoLabel = (tipoDocumento) => (tipoDocumento === 'PRESUPUESTO' ? 'Presupuesto' : 'Propuesta');
+const saludoParaCliente = (nombreCliente = '') => {
+  const nombre = String(nombreCliente || '').trim();
+  return nombre ? `${DEFAULT_SALUDO} ${nombre}` : DEFAULT_SALUDO;
+};
+
+const saludoEsAutomatico = (datosPdf = {}) => {
+  const saludo = (datosPdf.saludo || '').trim();
+  return !saludo
+    || saludo === DEFAULT_SALUDO
+    || saludo === saludoParaCliente(datosPdf.clienteNombre || '');
+};
 
 const datosPdfDesdeCliente = (cliente, base = {}, preferCliente = false) => ({
   ...DEFAULT_PDF_DATA,
@@ -209,12 +221,16 @@ export default function TamikaERP() {
         clienteDireccion: '',
         clienteTelefono: '',
         clienteEmail: '',
+        saludo: saludoEsAutomatico(prev) ? DEFAULT_SALUDO : prev.saludo,
       }));
       return;
     }
 
     const cliente = clientes.find((item) => item.id === clienteId);
-    setDatosPdf((prev) => datosPdfDesdeCliente(cliente, prev, true));
+    setDatosPdf((prev) => ({
+      ...datosPdfDesdeCliente(cliente, prev, true),
+      saludo: saludoEsAutomatico(prev) ? saludoParaCliente(cliente?.nombre) : prev.saludo,
+    }));
   };
 
   const handlePdfClienteChange = (clienteId) => {
@@ -627,21 +643,21 @@ export default function TamikaERP() {
       });
       const headerRightBlock = {
         table: {
-          widths: [170],
+          widths: [180],
           body: [
             [{
               text: nombreDocumento,
               fontSize: nombreDocumento.length > 10 ? 22 : 23,
               bold: true,
               color: '#2f343b',
-              alignment: 'center',
+              alignment: 'right',
               margin: [0, 0, 0, 7],
             }],
             [{
               text: `Fecha: ${fechaPdf}`,
               fontSize: 8.5,
               color: '#4b5563',
-              alignment: 'center',
+              alignment: 'right',
               margin: [0, 0, 0, 7],
             }],
             [{
@@ -649,13 +665,13 @@ export default function TamikaERP() {
               fontSize: 8.2,
               bold: true,
               color: '#334155',
-              alignment: 'center',
+              alignment: 'right',
               margin: [0, 0, 0, 0],
             }],
           ],
         },
         layout: 'noBorders',
-        absolutePosition: { x: 390, y: 38 },
+        absolutePosition: { x: 410, y: 38 },
       };
 
       const docDefinition = {
@@ -679,10 +695,10 @@ export default function TamikaERP() {
             sidebarSection('CLIENTE', sidebarCliente, 158),
             sidebarSection('EMPRESA', sidebarEmpresa, 326),
             logoBase64
-              ? { image: logoBase64, width: 92, opacity: 0.08, absolutePosition: { x: 30, y: 558 } }
+              ? { image: logoBase64, width: 112, opacity: 0.08, absolutePosition: { x: 20, y: 548 } }
               : { text: '', absolutePosition: { x: 34, y: 560 } },
             firmaUnificadaBase64
-              ? { image: firmaUnificadaBase64, width: 150, opacity: 0.95, absolutePosition: { x: 2, y: 610 } }
+              ? { image: firmaUnificadaBase64, width: 185, opacity: 0.95, absolutePosition: { x: -20, y: 590 } }
               : { text: '', absolutePosition: { x: 18, y: 662 } },
           ];
         },

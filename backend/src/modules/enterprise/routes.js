@@ -1013,9 +1013,9 @@ const registerStarlinkRoutes = (app, { prisma, logAudit, serializeError }) => {
           const diasRestantes = Math.ceil((fechaCorte - today) / 86400000);
           const ultimoPago = cuenta.pagos[0];
           const estadoPago = ultimoPago?.estado || 'PENDIENTE';
-          const semaforo = diasRestantes < 0 || estadoPago === 'VENCIDO'
+          const semaforo = diasRestantes <= 10 || estadoPago === 'VENCIDO'
             ? 'ROJO'
-            : diasRestantes <= 10 || estadoPago === 'PENDIENTE'
+            : diasRestantes <= 20
               ? 'AMARILLO'
               : 'VERDE';
 

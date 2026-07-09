@@ -30,10 +30,9 @@ const emptyPagoForm = () => ({
 
 const statusTone = (diasRestantes) => {
   const days = Number(diasRestantes);
-  if (days < 0) return 'border-red-200 bg-red-50 text-red-800';
-  if (days === 0) return 'border-amber-200 bg-amber-50 text-amber-800';
-  if (days <= 10) return 'border-cyan-200 bg-cyan-50 text-cyan-800';
-  return 'border-slate-200 bg-white text-slate-700';
+  if (days <= 10) return 'border-red-400 bg-red-100 text-red-950 shadow-sm';
+  if (days <= 20) return 'border-amber-400 bg-amber-100 text-amber-950 shadow-sm';
+  return 'border-emerald-400 bg-emerald-100 text-emerald-950 shadow-sm';
 };
 
 const dayLabel = (diasRestantes) => {
@@ -176,9 +175,12 @@ export default function StarlinkView({ apiFetch = fetch, clientes = [], onChange
         .sort((a, b) => new Date(b.fechaCorte || b.createdAt || 0) - new Date(a.fechaCorte || a.createdAt || 0))
       : []
   ), [pagos, selectedCuenta?.id]);
-  const alertasProximas = alertas.filter((alerta) => Number(alerta.diasRestantes) >= 0 && Number(alerta.diasRestantes) <= 10);
-  const alertasHoy = alertasProximas.filter((alerta) => Number(alerta.diasRestantes) === 0);
-  const alertasVencidas = alertas.filter((alerta) => Number(alerta.diasRestantes) < 0);
+  const alertasOrdenadas = [...alertas].sort((a, b) => Number(a.diasRestantes) - Number(b.diasRestantes));
+  const alertasCriticas = alertasOrdenadas.filter((alerta) => Number(alerta.diasRestantes) <= 10);
+  const alertasAdvertencia = alertasOrdenadas.filter((alerta) => Number(alerta.diasRestantes) > 10 && Number(alerta.diasRestantes) <= 20);
+  const alertasVerdes = alertasOrdenadas.filter((alerta) => Number(alerta.diasRestantes) > 20);
+  const alertasOperativas = [...alertasCriticas, ...alertasAdvertencia];
+  const alertasVencidas = alertasCriticas.filter((alerta) => Number(alerta.diasRestantes) < 0);
 
   useEffect(() => {
     if (!selectedAntena) {
@@ -390,23 +392,24 @@ export default function StarlinkView({ apiFetch = fetch, clientes = [], onChange
 
       {mensaje && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{mensaje}</div>}
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard title="Antenas" value={antenas.length} detail="Registradas en el sistema." tone="slate" />
         <MetricCard title="Cuentas/correos" value={correos.length} detail="Correos Starlink activos." tone="cyan" />
-        <MetricCard title="Vencen hoy" value={alertasHoy.length} detail="Cortes del día." tone="amber" />
-        <MetricCard title="Próximas" value={alertasProximas.length} detail="Dentro de 10 días." tone="emerald" />
+        <MetricCard title="Rojo" value={alertasCriticas.length} detail="Vencidas o <= 10 días." tone="red" />
+        <MetricCard title="Amarillo" value={alertasAdvertencia.length} detail="De 11 a 20 días." tone="amber" />
+        <MetricCard title="Verde" value={alertasVerdes.length} detail="Más de 20 días." tone="emerald" />
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="font-extrabold text-slate-950">Cortes próximos</h3>
-            <p className="text-sm text-slate-500">Cuentas que vencen hoy o dentro de los próximos 10 días.</p>
+            <h3 className="font-extrabold text-slate-950">Semáforo de cortes</h3>
+            <p className="text-sm text-slate-500">Rojo hasta 10 días o vencidas. Amarillo de 11 a 20 días.</p>
           </div>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{alertasProximas.length} alertas</span>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{alertasOperativas.length} alertas</span>
         </div>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {alertasProximas.map((alerta) => (
+          {alertasOperativas.map((alerta) => (
             <div key={alerta.cuentaId} className={`rounded-lg border p-4 ${statusTone(alerta.diasRestantes)}`}>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -422,9 +425,9 @@ export default function StarlinkView({ apiFetch = fetch, clientes = [], onChange
               </div>
             </div>
           ))}
-          {!alertasProximas.length && (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-semibold text-slate-500 lg:col-span-2">
-              No hay cortes próximos dentro de los próximos 10 días.
+          {!alertasOperativas.length && (
+            <div className="rounded-lg border border-dashed border-emerald-300 bg-emerald-50 p-5 text-sm font-semibold text-emerald-800 lg:col-span-2">
+              No hay cortes rojos ni amarillos.
             </div>
           )}
         </div>
@@ -660,8 +663,9 @@ function MetricCard({ title, value, detail, tone = 'slate' }) {
   const tones = {
     slate: 'border-slate-200 bg-white text-slate-900',
     cyan: 'border-cyan-200 bg-cyan-50 text-cyan-900',
-    amber: 'border-amber-200 bg-amber-50 text-amber-900',
-    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+    amber: 'border-amber-400 bg-amber-100 text-amber-950',
+    emerald: 'border-emerald-400 bg-emerald-100 text-emerald-950',
+    red: 'border-red-400 bg-red-100 text-red-950',
   };
 
   return (

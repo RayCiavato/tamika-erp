@@ -347,7 +347,7 @@ export default function TamikaERP() {
   };
 
   const alertasStarlinkProximas = (alertas = []) => (
-    alertas.filter((alerta) => Number(alerta.diasRestantes) >= 0 && Number(alerta.diasRestantes) <= 10)
+    alertas.filter((alerta) => Number(alerta.diasRestantes) <= 10)
   );
 
   const cargarAlertasStarlink = async () => {

@@ -9,6 +9,27 @@ const formatRate = (value) => Number(value || 0) > 0
   : 'Sin tasa';
 const formatRateDate = (value) => (value ? new Date(value).toLocaleDateString('es-VE', { timeZone: 'UTC' }) : 'Sin fecha');
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString('es-VE', { timeZone: 'UTC' }) : 'Sin fecha');
+const starlinkDays = (alerta) => Number(alerta?.diasRestantes);
+const isStarlinkCritical = (alerta) => starlinkDays(alerta) <= 10;
+const isStarlinkWarning = (alerta) => starlinkDays(alerta) > 10 && starlinkDays(alerta) <= 20;
+const isStarlinkHealthy = (alerta) => starlinkDays(alerta) > 20;
+const starlinkToneClass = (alerta) => {
+  if (isStarlinkCritical(alerta)) return 'border-red-400 bg-red-100 text-red-950 shadow-sm';
+  if (isStarlinkWarning(alerta)) return 'border-amber-400 bg-amber-100 text-amber-950 shadow-sm';
+  return 'border-emerald-400 bg-emerald-100 text-emerald-950 shadow-sm';
+};
+const starlinkBadgeClass = (alerta) => {
+  if (isStarlinkCritical(alerta)) return 'bg-red-700 text-white';
+  if (isStarlinkWarning(alerta)) return 'bg-amber-500 text-amber-950';
+  return 'bg-emerald-700 text-white';
+};
+const starlinkDayLabel = (diasRestantes) => {
+  const days = Number(diasRestantes);
+  if (days < 0) return `Vencida hace ${Math.abs(days)} día${Math.abs(days) === 1 ? '' : 's'}`;
+  if (days === 0) return 'Vence hoy';
+  if (days === 1) return 'Vence mañana';
+  return `Vence en ${days} días`;
+};
 
 const tipoLabel = {
   INGRESO: 'Ingreso',
@@ -224,12 +245,11 @@ export default function DashboardView({ resumen, loading, apiFetch, tasasActuale
 }
 
 function StarlinkDashboardCard({ alertas = [], onOpenStarlink }) {
-  const proximas = alertas
-    .filter((alerta) => Number(alerta.diasRestantes) >= 0 && Number(alerta.diasRestantes) <= 10)
-    .sort((a, b) => Number(a.diasRestantes) - Number(b.diasRestantes));
-  const hoy = proximas.filter((alerta) => Number(alerta.diasRestantes) === 0);
-  const vencidas = alertas.filter((alerta) => Number(alerta.diasRestantes) < 0);
-  const top = proximas.slice(0, 4);
+  const ordenadas = [...alertas].sort((a, b) => Number(a.diasRestantes) - Number(b.diasRestantes));
+  const criticas = ordenadas.filter(isStarlinkCritical);
+  const advertencias = ordenadas.filter(isStarlinkWarning);
+  const saludables = ordenadas.filter(isStarlinkHealthy);
+  const top = [...criticas, ...advertencias].slice(0, 4);
 
   return (
     <section className="rounded-lg border border-cyan-200 bg-cyan-50/40 p-5 shadow-sm">
@@ -237,7 +257,7 @@ function StarlinkDashboardCard({ alertas = [], onOpenStarlink }) {
         <div>
           <p className="text-xs font-extrabold uppercase text-cyan-700">Starlink</p>
           <h3 className="text-lg font-extrabold text-slate-950">Cortes y alertas operativas</h3>
-          <p className="text-sm text-slate-500">Seguimiento de cuentas que vencen hoy o dentro de los próximos 10 días.</p>
+          <p className="text-sm text-slate-500">Semáforo de cortes: rojo hasta 10 días o vencidas, amarillo de 11 a 20 días y verde con más de 20 días.</p>
         </div>
         <button type="button" onClick={onOpenStarlink} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-extrabold text-white shadow hover:bg-slate-800">
           Ver módulo
@@ -245,29 +265,29 @@ function StarlinkDashboardCard({ alertas = [], onOpenStarlink }) {
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-        <SmallAlertMetric title="Vencen hoy" value={hoy.length} tone="amber" />
-        <SmallAlertMetric title="Próximas" value={proximas.length} tone="cyan" />
-        <SmallAlertMetric title="Vencidas" value={vencidas.length} tone="red" />
+        <SmallAlertMetric title="Rojo <=10/vencidas" value={criticas.length} tone="red" />
+        <SmallAlertMetric title="Amarillo 11-20" value={advertencias.length} tone="amber" />
+        <SmallAlertMetric title="Verde +20" value={saludables.length} tone="emerald" />
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
         {top.map((alerta) => (
-          <div key={alerta.cuentaId} className="rounded-lg border border-white bg-white/80 p-3">
+          <div key={alerta.cuentaId} className={`rounded-lg border p-3 ${starlinkToneClass(alerta)}`}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-extrabold text-slate-950">{alerta.nombreCuenta}</p>
-                <p className="truncate text-xs text-slate-500">{alerta.cliente?.nombre || 'Sin cliente'} / {alerta.correoCuenta || 'Sin correo'}</p>
+                <p className="truncate text-xs opacity-80">{alerta.cliente?.nombre || 'Sin cliente'} / {alerta.correoCuenta || 'Sin correo'}</p>
               </div>
-              <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-extrabold ${Number(alerta.diasRestantes) === 0 ? 'bg-amber-100 text-amber-800' : 'bg-cyan-100 text-cyan-800'}`}>
-                {Number(alerta.diasRestantes) === 0 ? 'Hoy' : `${alerta.diasRestantes} días`}
+              <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-extrabold ${starlinkBadgeClass(alerta)}`}>
+                {starlinkDayLabel(alerta.diasRestantes)}
               </span>
             </div>
-            <p className="mt-2 text-xs font-semibold text-slate-500">Corte: {formatDate(alerta.fechaCorte)}</p>
+            <p className="mt-2 text-xs font-semibold opacity-80">Corte: {formatDate(alerta.fechaCorte)}</p>
           </div>
         ))}
         {!top.length && (
-          <div className="rounded-lg border border-dashed border-cyan-200 bg-white/70 p-4 text-sm font-semibold text-slate-500 lg:col-span-2">
-            No hay cortes próximos dentro de los próximos 10 días.
+          <div className="rounded-lg border border-dashed border-emerald-300 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800 lg:col-span-2">
+            No hay cortes rojos ni amarillos.
           </div>
         )}
       </div>
@@ -277,9 +297,10 @@ function StarlinkDashboardCard({ alertas = [], onOpenStarlink }) {
 
 function SmallAlertMetric({ title, value, tone }) {
   const styles = {
-    amber: 'bg-amber-50 text-amber-800 border-amber-200',
-    cyan: 'bg-cyan-50 text-cyan-800 border-cyan-200',
-    red: 'bg-red-50 text-red-800 border-red-200',
+    amber: 'bg-amber-200 text-amber-950 border-amber-400',
+    cyan: 'bg-cyan-100 text-cyan-950 border-cyan-300',
+    emerald: 'bg-emerald-200 text-emerald-950 border-emerald-400',
+    red: 'bg-red-200 text-red-950 border-red-400',
   };
 
   return (

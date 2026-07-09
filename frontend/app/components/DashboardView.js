@@ -9,6 +9,7 @@ const formatRate = (value) => Number(value || 0) > 0
   : 'Sin tasa';
 const formatRateDate = (value) => (value ? new Date(value).toLocaleDateString('es-VE', { timeZone: 'UTC' }) : 'Sin fecha');
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString('es-VE', { timeZone: 'UTC' }) : 'Sin fecha');
+const clienteEtiqueta = (cliente) => cliente?.alias || cliente?.nombre || '';
 const starlinkDays = (alerta) => Number(alerta?.diasRestantes);
 const isStarlinkCritical = (alerta) => starlinkDays(alerta) <= 10;
 const isStarlinkWarning = (alerta) => starlinkDays(alerta) > 10 && starlinkDays(alerta) <= 20;
@@ -230,7 +231,7 @@ export default function DashboardView({ resumen, loading, apiFetch, tasasActuale
                   <td className="p-3 font-medium">{tipoLabel[mov.tipo] || mov.tipo}</td>
                   <td className="p-3">
                     <p className="font-semibold text-slate-900">{mov.concepto}</p>
-                    <p className="text-xs text-slate-500">{mov.cliente?.nombre || mov.referencia || '-'}</p>
+                    <p className="text-xs text-slate-500">{clienteEtiqueta(mov.cliente) || mov.referencia || '-'}</p>
                   </td>
                   <td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${estadoStyles[mov.estado] || 'bg-slate-100 text-slate-700'}`}>{mov.estado}</span></td>
                   <td className="p-3 text-right font-bold tabular-nums">{formatUsd(mov.montoUsd)}</td>

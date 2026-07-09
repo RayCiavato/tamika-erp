@@ -7,6 +7,7 @@ const formatUsd = (value) => currency(value || 0, { symbol: '$', separator: '.',
 const formatBs = (value) => (value || value === 0 ? currency(value, { symbol: 'Bs ', separator: '.', decimal: ',' }).format() : '-');
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString('es-VE', { timeZone: 'UTC' }) : '-');
 const formatDateTime = (value) => (value ? new Date(value).toLocaleString('es-VE') : '-');
+const clienteEtiqueta = (cliente) => cliente?.alias || cliente?.nombre || '';
 
 const sectionConfig = [
   { key: 'ingresos', title: 'Ingresos', label: 'Ingresos reales', tone: 'emerald' },
@@ -136,7 +137,7 @@ export default function ReportesContablesView({ clientes = [], apiFetch }) {
           ? section.items.map((mov) => [
             bodyCell(formatDate(mov.fechaMovimiento)),
             bodyCell(mov.concepto || '-'),
-            bodyCell(mov.referencia || mov.cliente?.nombre || '-'),
+            bodyCell(mov.referencia || clienteEtiqueta(mov.cliente) || '-'),
             bodyCell(mov.estado || '-'),
             bodyCell(formatUsd(mov.montoUsd), 'right', true),
             bodyCell(mov.tasaBcv || '-', 'right'),
@@ -386,7 +387,7 @@ function ReportSection({ section }) {
               <tr key={`${section.key}-${mov.id}`} className="border-t align-top hover:bg-slate-50">
                 <td className="p-3 text-slate-500">{formatDate(mov.fechaMovimiento)}</td>
                 <td className="p-3 font-semibold text-slate-900">{mov.concepto}</td>
-                <td className="p-3 text-slate-600">{mov.referencia || mov.cliente?.nombre || '-'}</td>
+                <td className="p-3 text-slate-600">{mov.referencia || clienteEtiqueta(mov.cliente) || '-'}</td>
                 <td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${estadoStyles[mov.estado] || 'bg-slate-100 text-slate-700'}`}>{mov.estado}</span></td>
                 <td className="p-3 text-right font-bold tabular-nums">{formatUsd(mov.montoUsd)}</td>
                 <td className="p-3 text-right">{mov.tasaBcv || '-'}</td>

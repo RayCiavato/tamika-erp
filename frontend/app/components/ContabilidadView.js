@@ -60,6 +60,7 @@ const formatUsd = (value) => currency(value || 0, { symbol: '$', separator: '.',
 const formatBs = (value) => currency(value || 0, { symbol: 'Bs ', separator: '.', decimal: ',' }).format();
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString('es-VE', { timeZone: 'UTC' }) : '-');
 const toDateInput = (value) => (value ? new Date(value).toISOString().slice(0, 10) : '');
+const clienteEtiqueta = (cliente) => cliente?.alias || cliente?.nombre || '';
 
 export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActual, apiFetch = fetch }) {
   const [movimientos, setMovimientos] = useState([]);
@@ -517,7 +518,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
                       <p className="text-xs text-slate-500">{TIPOS.find((t) => t.value === mov.tipo)?.label || mov.tipo}{mov.categoria ? ` · ${mov.categoria}` : ''}</p>
                       {(mov.producto || mov.servicio) && <p className="text-xs font-semibold text-indigo-600">{mov.producto?.nombre || mov.servicio?.nombre}</p>}
                     </td>
-                    <td className="p-3 text-slate-600">{mov.cliente?.nombre || mov.referencia || mov.producto?.nombre || mov.servicio?.nombre || '-'}</td>
+                    <td className="p-3 text-slate-600">{clienteEtiqueta(mov.cliente) || mov.referencia || mov.producto?.nombre || mov.servicio?.nombre || '-'}</td>
                     <td className="p-3 whitespace-nowrap"><span className={`rounded-full px-2 py-1 text-xs font-bold ${estadoStyles[mov.estado] || 'bg-slate-100 text-slate-700'}`}>{mov.estado}</span></td>
                     <td className="p-3 text-right">
                       <p className="font-extrabold">{formatUsd(mov.montoUsd)}</p>

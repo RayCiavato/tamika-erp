@@ -68,6 +68,23 @@ model Cotizacion {
   deletedAt                DateTime?
 }
 
+model PlantillaDocumento {
+  id                 String   @id @default(uuid())
+  nombre             String
+  tipoDocumento      String   @default("AMBOS")
+  descripcion        String?
+  titulo             String?
+  contenidoPropuesta String?
+  condiciones        String?
+  datosPdf           Json?
+  activo             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  deletedAt          DateTime?
+
+  @@index([tipoDocumento, activo])
+}
+
 model Tasa {
   id       String   @id @default(uuid())
   bcv      Float

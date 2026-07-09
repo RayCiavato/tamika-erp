@@ -8,6 +8,7 @@ import ReportesContablesView from './components/ReportesContablesView';
 import AuditoriaView from './components/AuditoriaView';
 import UsuariosView from './components/UsuariosView';
 import StarlinkAlertModal from './components/StarlinkAlertModal';
+import PlantillasDocumentoView from './components/PlantillasDocumentoView';
 import CatalogosEnterpriseView from './modules/catalogos/CatalogosEnterpriseView';
 import NominaView from './modules/nomina/NominaView';
 import StarlinkView from './modules/starlink/StarlinkView';
@@ -97,6 +98,7 @@ export default function TamikaERP() {
   const [productos, setProductos] = useState([]);
   const [servicios, setServicios] = useState([]);
   const [historialCoti, setHistorialCoti] = useState([]);
+  const [plantillasDocumento, setPlantillasDocumento] = useState([]);
   const [dashboardResumen, setDashboardResumen] = useState(null);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
   const [tasaBCV, setTasaBCV] = useState('');
@@ -106,6 +108,7 @@ export default function TamikaERP() {
   const [starlinkAlertas, setStarlinkAlertas] = useState([]);
   const [showStarlinkAlertModal, setShowStarlinkAlertModal] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [plantillaSeleccionadaId, setPlantillaSeleccionadaId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
   const [cotiEditandoId, setCotiEditandoId] = useState(null);
@@ -220,6 +223,7 @@ export default function TamikaERP() {
 
   const handleTipoDocumentoChange = (value) => {
     setTipoDocumento(value);
+    setPlantillaSeleccionadaId('');
     cargarSiguienteCorrelativo(value);
   };
 
@@ -384,6 +388,7 @@ export default function TamikaERP() {
     apiFetch('/api/productos').then(res => res.json()).then(data => setProductos(Array.isArray(data) ? data : [])).catch(() => setProductos([]));
     apiFetch('/api/servicios').then(res => res.json()).then(data => setServicios(Array.isArray(data) ? data : [])).catch(() => setServicios([]));
     apiFetch('/api/propuestas').then(res => res.json()).then(data => setHistorialCoti(Array.isArray(data) ? data : []));
+    apiFetch('/api/plantillas-documento').then(res => res.json()).then(data => setPlantillasDocumento(Array.isArray(data) ? data : [])).catch(() => setPlantillasDocumento([]));
     if (!cotiEditandoId) cargarSiguienteCorrelativo(tipoDocumento);
     sincronizarTasasActuales({ silent: true });
     cargarAlertasStarlink();
@@ -435,6 +440,7 @@ export default function TamikaERP() {
     setNroCoti('');
     setTituloCoti('');
     setClienteSelect('');
+    setPlantillaSeleccionadaId('');
     setVigencia(DEFAULT_VIGENCIA);
     setCondiciones(DEFAULT_TERMS);
     setContenidoPropuesta(DEFAULT_PROPUESTA_CONTENT);
@@ -481,6 +487,55 @@ export default function TamikaERP() {
   const calcularSubtotal = () => itemsCoti.reduce((acc, item) => acc + (getPUnitario(item) * parseVe(item.cant)), 0);
   const calcularIva = () => calcularSubtotal() * 0.16;
   const calcularTotal = () => calcularSubtotal() + calcularIva();
+  const plantillasDisponibles = plantillasDocumento.filter((plantilla) => (
+    plantilla.activo !== false && (plantilla.tipoDocumento === 'AMBOS' || plantilla.tipoDocumento === tipoDocumento)
+  ));
+
+  const aplicarPlantillaDocumento = (plantillaId = plantillaSeleccionadaId) => {
+    const plantilla = plantillasDocumento.find((item) => item.id === plantillaId);
+    if (!plantilla) return alert('Selecciona una plantilla.');
+
+    if (plantilla.tipoDocumento !== 'AMBOS' && plantilla.tipoDocumento !== tipoDocumento) {
+      setTipoDocumento(plantilla.tipoDocumento);
+      cargarSiguienteCorrelativo(plantilla.tipoDocumento);
+    }
+    setPlantillaSeleccionadaId(plantilla.id);
+    if (plantilla.titulo) setTituloCoti(plantilla.titulo);
+    if (plantilla.contenidoPropuesta) setContenidoPropuesta(plantilla.contenidoPropuesta);
+    if (plantilla.condiciones) setCondiciones(plantilla.condiciones);
+    if (plantilla.datosPdf && typeof plantilla.datosPdf === 'object') {
+      setDatosPdf((prev) => ({
+        ...prev,
+        ...(plantilla.datosPdf.proyecto ? { proyecto: plantilla.datosPdf.proyecto } : {}),
+      }));
+    }
+  };
+
+  const guardarDocumentoComoPlantilla = async () => {
+    const nombre = prompt('Nombre de la plantilla:', tituloCoti || `${documentoLabel(tipoDocumento)} base`);
+    if (!nombre?.trim()) return;
+
+    const payload = {
+      nombre: nombre.trim(),
+      tipoDocumento,
+      descripcion: `Creada desde ${documentoLabel(tipoDocumento)} ${nroCoti || 'sin correlativo'}.`,
+      titulo: tituloCoti,
+      contenidoPropuesta,
+      condiciones,
+      datosPdf: datosPdf.proyecto ? { proyecto: datosPdf.proyecto } : null,
+      activo: true,
+    };
+    const res = await apiFetch('/api/plantillas-documento', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) return alert(data?.details?.join('\n') || data?.error || 'No se pudo guardar la plantilla.');
+    setPlantillaSeleccionadaId(data.id);
+    cargarDatos();
+    alert('Plantilla guardada.');
+  };
 
   const guardarCotizacionBD = async () => {
     if(!clienteSelect) return alert("Selecciona un cliente.");
@@ -517,6 +572,7 @@ export default function TamikaERP() {
     setNroCoti(coti.numero);
     setTituloCoti(coti.titulo || '');
     setClienteSelect(coti.clienteId);
+    setPlantillaSeleccionadaId('');
     setVigencia(coti.vigencia || DEFAULT_VIGENCIA);
     setCondiciones(coti.condiciones || DEFAULT_TERMS);
     setContenidoPropuesta(coti.contenidoPropuesta || DEFAULT_PROPUESTA_CONTENT);
@@ -836,6 +892,7 @@ export default function TamikaERP() {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'cotizacion', label: 'Propuestas', icon: '📝' },
+    { id: 'plantillas', label: 'Plantillas', icon: 'PL' },
     { id: 'contabilidad', label: 'Contabilidad', icon: '💼' },
     {
       id: 'productos',
@@ -1002,6 +1059,10 @@ export default function TamikaERP() {
           <ReportesContablesView clientes={clientes} apiFetch={apiFetch} />
         )}
 
+        {activeView === 'plantillas' && (
+          <PlantillasDocumentoView apiFetch={apiFetch} plantillas={plantillasDocumento} onChanged={cargarDatos} />
+        )}
+
         {activeView === 'productos' && (
           <CatalogosEnterpriseView apiFetch={apiFetch} clientes={clientes} initialTab="productos" onChanged={cargarDatos} tasaBcvActual={tasaBcvActual} />
         )}
@@ -1110,6 +1171,40 @@ export default function TamikaERP() {
                   <label className="text-xs text-slate-500 font-bold uppercase">Vigencia</label>
                   <input type="text" value={vigencia} onChange={(e)=>setVigencia(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
                 </div>
+             </div>
+
+             <div className="rounded-xl border border-teal-100 bg-teal-50/60 p-4">
+               <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                 <div className="min-w-0 flex-1">
+                   <label className="text-xs font-bold uppercase text-teal-800">Plantilla del documento</label>
+                   <select
+                     value={plantillaSeleccionadaId}
+                     onChange={(e) => setPlantillaSeleccionadaId(e.target.value)}
+                     className="mt-1 w-full rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-teal-500"
+                   >
+                     <option value="">Selecciona una plantilla...</option>
+                     {plantillasDisponibles.map((plantilla) => (
+                       <option key={plantilla.id} value={plantilla.id}>
+                         {plantilla.nombre} {plantilla.tipoDocumento === 'AMBOS' ? '(Propuesta/Presupuesto)' : `(${documentoLabel(plantilla.tipoDocumento)})`}
+                       </option>
+                     ))}
+                   </select>
+                   <p className="mt-1 text-xs text-teal-800">
+                     {plantillasDisponibles.length ? 'Carga titulo, proyecto, contenido interno y terminos sin tocar cliente ni correlativo.' : 'No hay plantillas activas para este tipo de documento.'}
+                   </p>
+                 </div>
+                 <div className="flex flex-wrap gap-2">
+                   <button type="button" onClick={() => aplicarPlantillaDocumento()} disabled={!plantillaSeleccionadaId} className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-extrabold text-white shadow hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-50">
+                     Aplicar
+                   </button>
+                   <button type="button" onClick={guardarDocumentoComoPlantilla} className="rounded-lg border border-teal-200 bg-white px-4 py-2 text-sm font-bold text-teal-800 hover:bg-teal-50">
+                     Guardar como plantilla
+                   </button>
+                   <button type="button" onClick={() => setActiveView('plantillas')} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">
+                     Gestionar
+                   </button>
+                 </div>
+               </div>
              </div>
 
              <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">

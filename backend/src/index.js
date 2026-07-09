@@ -18,6 +18,7 @@ const MOVIMIENTO_ESTADOS = ['PENDIENTE', 'PAGADO', 'VENCIDO', 'ANULADO'];
 const PENDIENTE_ESTADOS = ['PENDIENTE', 'VENCIDO'];
 const DOCUMENTO_TIPOS = ['PROPUESTA', 'PRESUPUESTO'];
 const DOCUMENTO_ESTADOS = ['BORRADOR', 'APROBADO', 'CONVERTIDO', 'FACTURADO', 'ANULADO'];
+const PLANTILLA_DOCUMENTO_TIPOS = ['PROPUESTA', 'PRESUPUESTO', 'AMBOS'];
 const TASA_FUENTES = ['BCV_API', 'MANUAL', 'CACHE', 'FALLBACK'];
 const MOVIMIENTO_CATEGORIAS = ['Servicio', 'Producto', 'Nomina', 'Pago de factura', 'Suscripcion', 'Otro'];
 const DEFAULT_BCV_API_URL = 'https://ve.dolarapi.com/v1/dolares/oficial';
@@ -473,6 +474,37 @@ const normalizeCotizacionPayload = (body) => {
       estado,
     },
     numero,
+  };
+};
+
+const parseActivoPlantilla = (value) => {
+  if (value === undefined) return true;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return !['false', '0', 'no', 'inactivo'].includes(value.trim().toLowerCase());
+  return Boolean(value);
+};
+
+const normalizePlantillaDocumentoPayload = (body) => {
+  const errors = [];
+  const nombre = body.nombre?.toString().trim();
+  const tipoDocumento = body.tipoDocumento?.toString().trim().toUpperCase() || 'AMBOS';
+
+  if (!nombre) errors.push('nombre es obligatorio.');
+  if (!PLANTILLA_DOCUMENTO_TIPOS.includes(tipoDocumento)) errors.push('tipoDocumento debe ser PROPUESTA, PRESUPUESTO o AMBOS.');
+
+  if (errors.length) return { errors };
+
+  return {
+    data: {
+      nombre,
+      tipoDocumento,
+      descripcion: body.descripcion?.toString().trim() || null,
+      titulo: body.titulo?.toString().trim() || null,
+      contenidoPropuesta: body.contenidoPropuesta?.toString() || null,
+      condiciones: body.condiciones?.toString() || null,
+      datosPdf: body.datosPdf && typeof body.datosPdf === 'object' ? body.datosPdf : null,
+      activo: parseActivoPlantilla(body.activo),
+    },
   };
 };
 
@@ -1252,6 +1284,113 @@ const eliminarCotizacion = async (req, res) => {
     serializeError(res, 400, 'No se pudo eliminar la propuesta.');
   }
 };
+
+const listarPlantillasDocumento = async (req, res) => {
+  try {
+    const where = { deletedAt: null };
+    const tipoDocumento = req.query.tipoDocumento?.toString().trim().toUpperCase();
+    if (PLANTILLA_DOCUMENTO_TIPOS.includes(tipoDocumento) && tipoDocumento !== 'AMBOS') {
+      where.OR = [{ tipoDocumento }, { tipoDocumento: 'AMBOS' }];
+    }
+    if (req.query.activas === '1') where.activo = true;
+
+    const plantillas = await prisma.plantillaDocumento.findMany({
+      where,
+      orderBy: [{ activo: 'desc' }, { updatedAt: 'desc' }, { nombre: 'asc' }],
+    });
+    res.json(plantillas);
+  } catch (error) {
+    serializeError(res, 500, 'No se pudieron cargar las plantillas.');
+  }
+};
+
+const obtenerPlantillaDocumento = async (req, res) => {
+  try {
+    const plantilla = await prisma.plantillaDocumento.findFirst({
+      where: { id: req.params.id, deletedAt: null },
+    });
+    if (!plantilla) return serializeError(res, 404, 'Plantilla no encontrada.');
+    res.json(plantilla);
+  } catch (error) {
+    serializeError(res, 500, 'No se pudo cargar la plantilla.');
+  }
+};
+
+const crearPlantillaDocumento = async (req, res) => {
+  const normalized = normalizePlantillaDocumentoPayload(req.body);
+  if (normalized.errors) return serializeError(res, 400, 'Datos invalidos.', normalized.errors);
+
+  try {
+    const plantilla = await prisma.plantillaDocumento.create({ data: normalized.data });
+    await logAudit(req, {
+      accion: 'PLANTILLA_DOCUMENTO_CREATE',
+      entidad: 'PlantillaDocumento',
+      entidadId: plantilla.id,
+      descripcion: `Plantilla creada: ${plantilla.nombre}.`,
+      metadata: { tipoDocumento: plantilla.tipoDocumento, activo: plantilla.activo },
+    });
+    res.status(201).json(plantilla);
+  } catch (error) {
+    serializeError(res, 500, 'No se pudo crear la plantilla.');
+  }
+};
+
+const actualizarPlantillaDocumento = async (req, res) => {
+  try {
+    const actual = await prisma.plantillaDocumento.findFirst({
+      where: { id: req.params.id, deletedAt: null },
+    });
+    if (!actual) return serializeError(res, 404, 'Plantilla no encontrada.');
+
+    const normalized = normalizePlantillaDocumentoPayload({ ...actual, ...req.body });
+    if (normalized.errors) return serializeError(res, 400, 'Datos invalidos.', normalized.errors);
+
+    const plantilla = await prisma.plantillaDocumento.update({
+      where: { id: req.params.id },
+      data: normalized.data,
+    });
+    await logAudit(req, {
+      accion: 'PLANTILLA_DOCUMENTO_UPDATE',
+      entidad: 'PlantillaDocumento',
+      entidadId: plantilla.id,
+      descripcion: `Plantilla actualizada: ${plantilla.nombre}.`,
+      metadata: { tipoDocumento: plantilla.tipoDocumento, activo: plantilla.activo },
+    });
+    res.json(plantilla);
+  } catch (error) {
+    serializeError(res, 500, 'No se pudo actualizar la plantilla.');
+  }
+};
+
+const eliminarPlantillaDocumento = async (req, res) => {
+  try {
+    const actual = await prisma.plantillaDocumento.findFirst({
+      where: { id: req.params.id, deletedAt: null },
+    });
+    if (!actual) return serializeError(res, 404, 'Plantilla no encontrada.');
+
+    await prisma.plantillaDocumento.update({
+      where: { id: req.params.id },
+      data: { deletedAt: new Date(), activo: false },
+    });
+    await logAudit(req, {
+      accion: 'PLANTILLA_DOCUMENTO_DELETE',
+      entidad: 'PlantillaDocumento',
+      entidadId: actual.id,
+      descripcion: `Plantilla eliminada logicamente: ${actual.nombre}.`,
+      metadata: { tipoDocumento: actual.tipoDocumento },
+    });
+    res.json({ success: true });
+  } catch (error) {
+    serializeError(res, 400, 'No se pudo eliminar la plantilla.');
+  }
+};
+
+app.get('/api/plantillas-documento', listarPlantillasDocumento);
+app.get('/api/plantillas-documento/:id', obtenerPlantillaDocumento);
+app.post('/api/plantillas-documento', crearPlantillaDocumento);
+app.put('/api/plantillas-documento/:id', actualizarPlantillaDocumento);
+app.delete('/api/plantillas-documento/:id', eliminarPlantillaDocumento);
 
 app.get('/api/propuestas/siguiente-correlativo', obtenerSiguienteCorrelativoHandler);
 app.post('/api/propuestas/configurar-correlativo', requireAdmin, configurarCorrelativoHandler);

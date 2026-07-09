@@ -63,30 +63,62 @@ const snippets = [
   },
 ];
 
-const tableActions = [
-  { id: 'row-above', label: 'Fila arriba' },
-  { id: 'row-below', label: 'Fila abajo' },
-  { id: 'col-left', label: 'Col. izquierda' },
-  { id: 'col-right', label: 'Col. derecha' },
-  { id: 'delete-row', label: 'Eliminar fila' },
-  { id: 'delete-col', label: 'Eliminar col.' },
-  { id: 'merge-right', label: 'Unir derecha' },
-  { id: 'merge-down', label: 'Unir abajo' },
-  { id: 'split-cell', label: 'Dividir celda' },
-  { id: 'delete-table', label: 'Eliminar tabla' },
+const tableActionGroups = [
+  {
+    title: 'Insertar',
+    tone: 'teal',
+    actions: [
+      { id: 'row-above', label: '+ Fila arriba' },
+      { id: 'row-below', label: '+ Fila abajo' },
+      { id: 'col-left', label: '+ Col. izquierda' },
+      { id: 'col-right', label: '+ Col. derecha' },
+    ],
+  },
+  {
+    title: 'Eliminar',
+    tone: 'slate',
+    actions: [
+      { id: 'delete-row', label: '- Fila' },
+      { id: 'delete-col', label: '- Columna' },
+      { id: 'delete-table', label: 'Eliminar tabla', danger: true },
+    ],
+  },
+  {
+    title: 'Unificar',
+    tone: 'indigo',
+    actions: [
+      { id: 'merge-right', label: 'Unir derecha' },
+      { id: 'merge-down', label: 'Unir abajo' },
+      { id: 'split-cell', label: 'Dividir celda' },
+    ],
+  },
 ];
 
 const cellStyle = 'border:1px solid #cbd5e1; padding:8px; vertical-align:top;';
 const headerCellStyle = `${cellStyle} background-color:#e2e8f0; text-align:left; font-weight:700;`;
+const newCellStyle = `${cellStyle} background-color:#ecfeff;`;
+const newCellContent = '<p>Nueva celda</p>';
 
 const normalizeCell = (cell) => {
   if (!cell) return;
   const header = cell.tagName === 'TH';
-  cell.setAttribute('style', header ? headerCellStyle : cellStyle);
+  const fresh = cell.dataset?.newCell === 'true';
+  cell.setAttribute('style', header ? headerCellStyle : fresh ? newCellStyle : cellStyle);
   if (!cell.innerHTML.trim()) cell.innerHTML = '<p><br></p>';
 };
 
-const createCell = (doc, header = false) => {
+const createCell = (doc, header = false, content = newCellContent) => {
+  const cell = doc.createElement(header ? 'th' : 'td');
+  cell.innerHTML = content;
+  if (!header) {
+    cell.dataset.newCell = 'true';
+    cell.setAttribute('style', newCellStyle);
+  }
+  if (header) normalizeCell(cell);
+  return cell;
+};
+
+const createBlankCell = (doc, header = false) => {
   const cell = doc.createElement(header ? 'th' : 'td');
   cell.innerHTML = '<p><br></p>';
   normalizeCell(cell);
@@ -128,10 +160,12 @@ const tableColumnCount = (table) => Array.from(table.rows).reduce((max, row) => 
 export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas = [], onChanged }) {
   const contenidoEditorRef = useRef(null);
   const condicionesEditorRef = useRef(null);
+  const activeCellsRef = useRef({});
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [buscar, setBuscar] = useState('');
+  const [tableSelection, setTableSelection] = useState('Selecciona una celda dentro de una tabla para editar filas, columnas o unificar.');
 
   const readJson = async (res, fallback) => {
     const data = await res.json().catch(() => null);
@@ -141,9 +175,25 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
 
   const updateForm = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
+  const editorForField = (field) => (
+    field === 'condiciones' ? condicionesEditorRef.current?.getEditor?.() : contenidoEditorRef.current?.getEditor?.()
+  );
+
+  const capturarCeldaActiva = (field) => {
+    const editor = editorForField(field);
+    const cell = editor ? selectedCellFromEditor(editor) : null;
+    if (!editor || !cell) return;
+
+    const table = cell.closest('table');
+    const row = cell.closest('tr');
+    const rowIndex = Array.from(table.rows).indexOf(row) + 1;
+    const colIndex = colStartForCell(row, cell) + 1;
+    activeCellsRef.current[field] = cell;
+    setTableSelection(`${field === 'condiciones' ? 'Terminos' : 'Contenido'}: fila ${rowIndex}, columna ${colIndex}`);
+  };
+
   const insertarBloque = (field, html) => {
-    const ref = field === 'condiciones' ? condicionesEditorRef : contenidoEditorRef;
-    const editor = ref.current?.getEditor?.();
+    const editor = editorForField(field);
 
     if (!editor) {
       updateForm(field, `${form[field] || ''}${html}`);
@@ -157,9 +207,10 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
   };
 
   const ejecutarAccionTabla = (field, action) => {
-    const ref = field === 'condiciones' ? condicionesEditorRef : contenidoEditorRef;
-    const editor = ref.current?.getEditor?.();
-    const cell = editor ? selectedCellFromEditor(editor) : null;
+    const editor = editorForField(field);
+    const liveCell = editor ? selectedCellFromEditor(editor) : null;
+    const storedCell = activeCellsRef.current[field];
+    const cell = liveCell || (storedCell && editor?.root.contains(storedCell) ? storedCell : null);
 
     if (!editor || !cell) {
       setMensaje('Selecciona una celda de una tabla para usar la edicion avanzada.');
@@ -170,10 +221,16 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
     const row = cell.closest('tr');
     const doc = cell.ownerDocument;
     const columnIndex = colStartForCell(row, cell);
-    const sync = () => {
+    const sync = (message = 'Tabla actualizada.') => {
       table?.querySelectorAll('td, th').forEach(normalizeCell);
+      const nextHtml = editor.root.innerHTML;
+      editor.setText('', 'silent');
+      editor.clipboard.dangerouslyPasteHTML(0, nextHtml, 'silent');
       updateForm(field, editor.root.innerHTML);
       editor.focus();
+      activeCellsRef.current[field] = null;
+      setTableSelection('Tabla actualizada. Selecciona una celda para otra accion.');
+      setMensaje(message);
     };
 
     if (action === 'row-above' || action === 'row-below') {
@@ -185,7 +242,7 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
         newRow.appendChild(newCell);
       });
       row.parentNode.insertBefore(newRow, action === 'row-above' ? row : row.nextSibling);
-      sync();
+      sync(action === 'row-above' ? 'Fila insertada arriba.' : 'Fila insertada abajo.');
       return;
     }
 
@@ -206,14 +263,14 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
           currentRow.appendChild(newCell);
         }
       });
-      sync();
+      sync(action === 'col-left' ? 'Columna insertada a la izquierda.' : 'Columna insertada a la derecha.');
       return;
     }
 
     if (action === 'delete-row') {
       if (table.rows.length <= 1) table.remove();
       else row.remove();
-      sync();
+      sync('Fila eliminada.');
       return;
     }
 
@@ -221,7 +278,7 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
       const totalColumns = tableColumnCount(table);
       if (totalColumns <= 1) {
         table.remove();
-        sync();
+        sync('Tabla eliminada.');
         return;
       }
       Array.from(table.rows).forEach((currentRow) => {
@@ -230,7 +287,7 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
         if (info.span > 1) info.cell.colSpan = info.span - 1;
         else info.cell.remove();
       });
-      sync();
+      sync('Columna eliminada.');
       return;
     }
 
@@ -243,7 +300,7 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
       cell.colSpan = Number(cell.colSpan || 1) + Number(nextCell.colSpan || 1);
       cell.innerHTML = `${cell.innerHTML}${nextCell.innerHTML}`;
       nextCell.remove();
-      sync();
+      sync('Celdas unificadas hacia la derecha.');
       return;
     }
 
@@ -257,7 +314,7 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
       cell.rowSpan = Number(cell.rowSpan || 1) + Number(target.rowSpan || 1);
       cell.innerHTML = `${cell.innerHTML}${target.innerHTML}`;
       target.remove();
-      sync();
+      sync('Celdas unificadas hacia abajo.');
       return;
     }
 
@@ -271,21 +328,21 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
       cell.colSpan = 1;
       cell.rowSpan = 1;
       for (let index = 1; index < colSpan; index += 1) {
-        row.insertBefore(createCell(doc, cell.tagName === 'TH'), cell.nextSibling);
+        row.insertBefore(createBlankCell(doc, cell.tagName === 'TH'), cell.nextSibling);
       }
       let targetRow = row.nextElementSibling;
       for (let index = 1; index < rowSpan && targetRow; index += 1) {
         const info = cellAtColumn(targetRow, columnIndex);
-        targetRow.insertBefore(createCell(doc, cell.tagName === 'TH'), info.cell || null);
+        targetRow.insertBefore(createBlankCell(doc, cell.tagName === 'TH'), info.cell || null);
         targetRow = targetRow.nextElementSibling;
       }
-      sync();
+      sync('Celda dividida.');
       return;
     }
 
     if (action === 'delete-table') {
       table.remove();
-      sync();
+      sync('Tabla eliminada.');
     }
   };
 
@@ -429,15 +486,21 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
               <SnippetBar
                 onInsert={(html) => insertarBloque('contenidoPropuesta', html)}
                 onTableAction={(action) => ejecutarAccionTabla('contenidoPropuesta', action)}
+                selectionLabel={tableSelection}
               />
-              <ReactQuill forwardedRef={contenidoEditorRef} theme="snow" value={form.contenidoPropuesta} onChange={(value) => updateForm('contenidoPropuesta', value)} className="bg-white min-h-[220px] pb-10" />
+              <div onMouseUp={() => capturarCeldaActiva('contenidoPropuesta')} onKeyUp={() => capturarCeldaActiva('contenidoPropuesta')}>
+                <ReactQuill forwardedRef={contenidoEditorRef} theme="snow" value={form.contenidoPropuesta} onChange={(value) => updateForm('contenidoPropuesta', value)} className="bg-white min-h-[220px] pb-10" />
+              </div>
             </EditorBlock>
             <EditorBlock title="Terminos y condiciones" subtitle="Se carga en la seccion final del documento.">
               <SnippetBar
                 onInsert={(html) => insertarBloque('condiciones', html)}
                 onTableAction={(action) => ejecutarAccionTabla('condiciones', action)}
+                selectionLabel={tableSelection}
               />
-              <ReactQuill forwardedRef={condicionesEditorRef} theme="snow" value={form.condiciones} onChange={(value) => updateForm('condiciones', value)} className="bg-white min-h-[220px] pb-10" />
+              <div onMouseUp={() => capturarCeldaActiva('condiciones')} onKeyUp={() => capturarCeldaActiva('condiciones')}>
+                <ReactQuill forwardedRef={condicionesEditorRef} theme="snow" value={form.condiciones} onChange={(value) => updateForm('condiciones', value)} className="bg-white min-h-[220px] pb-10" />
+              </div>
             </EditorBlock>
           </div>
         </form>
@@ -516,41 +579,59 @@ function EditorBlock({ title, subtitle, children }) {
   );
 }
 
-function SnippetBar({ onInsert, onTableAction }) {
+function SnippetBar({ onInsert, onTableAction, selectionLabel }) {
   return (
-    <div className="mb-3 space-y-3 rounded-lg border border-slate-200 bg-white p-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-extrabold uppercase text-slate-500">Bloques rapidos</p>
-        <span className="rounded-full bg-teal-50 px-2 py-1 text-[11px] font-bold text-teal-700">PDF ready</span>
+    <div className="mb-3 rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Constructor de bloques</p>
+          <p className="text-xs font-semibold text-slate-500">{selectionLabel}</p>
+        </div>
+        <span className="w-fit rounded-full bg-teal-50 px-3 py-1 text-[11px] font-bold text-teal-700 ring-1 ring-teal-100">PDF ready</span>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {snippets.map((snippet) => (
-          <button
-            key={snippet.id}
-            type="button"
-            onClick={() => onInsert(snippet.html)}
-            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-800"
-          >
-            {snippet.label}
-          </button>
-        ))}
-      </div>
-      <div className="border-t border-slate-200 pt-3">
-        <p className="mb-2 text-xs font-extrabold uppercase text-slate-500">Edicion de tabla</p>
-        <div className="flex flex-wrap gap-2">
-          {tableActions.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              onMouseDown={(event) => {
-                event.preventDefault();
-                onTableAction(action.id);
-              }}
-              className={`rounded-lg border px-3 py-2 text-xs font-bold ${action.id === 'delete-table' ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100' : 'border-slate-200 bg-white text-slate-700 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-800'}`}
-            >
-              {action.label}
-            </button>
-          ))}
+      <div className="space-y-4 p-4">
+        <div>
+          <p className="mb-2 text-[11px] font-extrabold uppercase tracking-wide text-slate-500">Bloques rapidos</p>
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+            {snippets.map((snippet) => (
+              <button
+                key={snippet.id}
+                type="button"
+                onClick={() => onInsert(snippet.html)}
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-800"
+              >
+                {snippet.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="mb-2 text-[11px] font-extrabold uppercase tracking-wide text-slate-500">Edicion de tabla</p>
+          <div className="grid gap-3 xl:grid-cols-3">
+            {tableActionGroups.map((group) => (
+              <div key={group.title} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="mb-2 text-[11px] font-extrabold uppercase tracking-wide text-slate-500">{group.title}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {group.actions.map((action) => (
+                    <button
+                      key={action.id}
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        onTableAction(action.id);
+                      }}
+                      className={`rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${action.danger ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100' : group.tone === 'teal' ? 'border-teal-200 bg-white text-teal-800 hover:bg-teal-50' : group.tone === 'indigo' ? 'border-indigo-200 bg-white text-indigo-800 hover:bg-indigo-50' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'}`}
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+          Selecciona una celda de la tabla y luego usa las acciones. Las celdas nuevas se crean con texto visible para que puedas editarlas rapido.
         </div>
       </div>
     </div>

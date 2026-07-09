@@ -63,6 +63,68 @@ const snippets = [
   },
 ];
 
+const tableActions = [
+  { id: 'row-above', label: 'Fila arriba' },
+  { id: 'row-below', label: 'Fila abajo' },
+  { id: 'col-left', label: 'Col. izquierda' },
+  { id: 'col-right', label: 'Col. derecha' },
+  { id: 'delete-row', label: 'Eliminar fila' },
+  { id: 'delete-col', label: 'Eliminar col.' },
+  { id: 'merge-right', label: 'Unir derecha' },
+  { id: 'merge-down', label: 'Unir abajo' },
+  { id: 'split-cell', label: 'Dividir celda' },
+  { id: 'delete-table', label: 'Eliminar tabla' },
+];
+
+const cellStyle = 'border:1px solid #cbd5e1; padding:8px; vertical-align:top;';
+const headerCellStyle = `${cellStyle} background-color:#e2e8f0; text-align:left; font-weight:700;`;
+
+const normalizeCell = (cell) => {
+  if (!cell) return;
+  const header = cell.tagName === 'TH';
+  cell.setAttribute('style', header ? headerCellStyle : cellStyle);
+  if (!cell.innerHTML.trim()) cell.innerHTML = '<p><br></p>';
+};
+
+const createCell = (doc, header = false) => {
+  const cell = doc.createElement(header ? 'th' : 'td');
+  cell.innerHTML = '<p><br></p>';
+  normalizeCell(cell);
+  return cell;
+};
+
+const selectedCellFromEditor = (editor) => {
+  const selection = window.getSelection();
+  const node = selection?.anchorNode;
+  const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+  const cell = element?.closest?.('td, th');
+  return cell && editor.root.contains(cell) ? cell : null;
+};
+
+const colStartForCell = (row, targetCell) => {
+  let index = 0;
+  for (const cell of Array.from(row.cells)) {
+    if (cell === targetCell) return index;
+    index += Number(cell.colSpan || 1);
+  }
+  return 0;
+};
+
+const cellAtColumn = (row, targetColumn) => {
+  let index = 0;
+  for (const cell of Array.from(row.cells)) {
+    const span = Number(cell.colSpan || 1);
+    if (targetColumn >= index && targetColumn < index + span) return { cell, start: index, span };
+    index += span;
+  }
+  return { cell: null, start: index, span: 1 };
+};
+
+const tableColumnCount = (table) => Array.from(table.rows).reduce((max, row) => {
+  const count = Array.from(row.cells).reduce((total, cell) => total + Number(cell.colSpan || 1), 0);
+  return Math.max(max, count);
+}, 0);
+
 export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas = [], onChanged }) {
   const contenidoEditorRef = useRef(null);
   const condicionesEditorRef = useRef(null);
@@ -92,6 +154,139 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
     const index = range?.index ?? Math.max(editor.getLength() - 1, 0);
     editor.clipboard.dangerouslyPasteHTML(index, html, 'user');
     updateForm(field, editor.root.innerHTML);
+  };
+
+  const ejecutarAccionTabla = (field, action) => {
+    const ref = field === 'condiciones' ? condicionesEditorRef : contenidoEditorRef;
+    const editor = ref.current?.getEditor?.();
+    const cell = editor ? selectedCellFromEditor(editor) : null;
+
+    if (!editor || !cell) {
+      setMensaje('Selecciona una celda de una tabla para usar la edicion avanzada.');
+      return;
+    }
+
+    const table = cell.closest('table');
+    const row = cell.closest('tr');
+    const doc = cell.ownerDocument;
+    const columnIndex = colStartForCell(row, cell);
+    const sync = () => {
+      table?.querySelectorAll('td, th').forEach(normalizeCell);
+      updateForm(field, editor.root.innerHTML);
+      editor.focus();
+    };
+
+    if (action === 'row-above' || action === 'row-below') {
+      const newRow = doc.createElement('tr');
+      Array.from(row.cells).forEach((sourceCell) => {
+        const newCell = createCell(doc, false);
+        const colSpan = Number(sourceCell.colSpan || 1);
+        if (colSpan > 1) newCell.colSpan = colSpan;
+        newRow.appendChild(newCell);
+      });
+      row.parentNode.insertBefore(newRow, action === 'row-above' ? row : row.nextSibling);
+      sync();
+      return;
+    }
+
+    if (action === 'col-left' || action === 'col-right') {
+      const insertColumn = columnIndex + (action === 'col-right' ? Number(cell.colSpan || 1) : 0);
+      Array.from(table.rows).forEach((currentRow) => {
+        const info = cellAtColumn(currentRow, insertColumn);
+        if (info.cell && insertColumn > info.start && insertColumn < info.start + info.span) {
+          info.cell.colSpan = info.span + 1;
+          return;
+        }
+
+        const header = Array.from(currentRow.cells).every((item) => item.tagName === 'TH');
+        const newCell = createCell(doc, header);
+        if (info.cell && insertColumn <= info.start) {
+          currentRow.insertBefore(newCell, info.cell);
+        } else {
+          currentRow.appendChild(newCell);
+        }
+      });
+      sync();
+      return;
+    }
+
+    if (action === 'delete-row') {
+      if (table.rows.length <= 1) table.remove();
+      else row.remove();
+      sync();
+      return;
+    }
+
+    if (action === 'delete-col') {
+      const totalColumns = tableColumnCount(table);
+      if (totalColumns <= 1) {
+        table.remove();
+        sync();
+        return;
+      }
+      Array.from(table.rows).forEach((currentRow) => {
+        const info = cellAtColumn(currentRow, columnIndex);
+        if (!info.cell) return;
+        if (info.span > 1) info.cell.colSpan = info.span - 1;
+        else info.cell.remove();
+      });
+      sync();
+      return;
+    }
+
+    if (action === 'merge-right') {
+      const nextCell = cell.nextElementSibling;
+      if (!nextCell) {
+        setMensaje('No hay una celda a la derecha para unificar.');
+        return;
+      }
+      cell.colSpan = Number(cell.colSpan || 1) + Number(nextCell.colSpan || 1);
+      cell.innerHTML = `${cell.innerHTML}${nextCell.innerHTML}`;
+      nextCell.remove();
+      sync();
+      return;
+    }
+
+    if (action === 'merge-down') {
+      const nextRow = row.nextElementSibling;
+      const target = nextRow ? cellAtColumn(nextRow, columnIndex).cell : null;
+      if (!target || Number(target.colSpan || 1) !== Number(cell.colSpan || 1)) {
+        setMensaje('No hay una celda compatible debajo para unificar.');
+        return;
+      }
+      cell.rowSpan = Number(cell.rowSpan || 1) + Number(target.rowSpan || 1);
+      cell.innerHTML = `${cell.innerHTML}${target.innerHTML}`;
+      target.remove();
+      sync();
+      return;
+    }
+
+    if (action === 'split-cell') {
+      const colSpan = Number(cell.colSpan || 1);
+      const rowSpan = Number(cell.rowSpan || 1);
+      if (colSpan <= 1 && rowSpan <= 1) {
+        setMensaje('La celda seleccionada no esta unificada.');
+        return;
+      }
+      cell.colSpan = 1;
+      cell.rowSpan = 1;
+      for (let index = 1; index < colSpan; index += 1) {
+        row.insertBefore(createCell(doc, cell.tagName === 'TH'), cell.nextSibling);
+      }
+      let targetRow = row.nextElementSibling;
+      for (let index = 1; index < rowSpan && targetRow; index += 1) {
+        const info = cellAtColumn(targetRow, columnIndex);
+        targetRow.insertBefore(createCell(doc, cell.tagName === 'TH'), info.cell || null);
+        targetRow = targetRow.nextElementSibling;
+      }
+      sync();
+      return;
+    }
+
+    if (action === 'delete-table') {
+      table.remove();
+      sync();
+    }
   };
 
   const limpiar = () => {
@@ -231,11 +426,17 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
 
           <div className="space-y-4">
             <EditorBlock title="Contenido interno" subtitle="Se aplica al bloque editable de propuestas.">
-              <SnippetBar onInsert={(html) => insertarBloque('contenidoPropuesta', html)} />
+              <SnippetBar
+                onInsert={(html) => insertarBloque('contenidoPropuesta', html)}
+                onTableAction={(action) => ejecutarAccionTabla('contenidoPropuesta', action)}
+              />
               <ReactQuill forwardedRef={contenidoEditorRef} theme="snow" value={form.contenidoPropuesta} onChange={(value) => updateForm('contenidoPropuesta', value)} className="bg-white min-h-[220px] pb-10" />
             </EditorBlock>
             <EditorBlock title="Terminos y condiciones" subtitle="Se carga en la seccion final del documento.">
-              <SnippetBar onInsert={(html) => insertarBloque('condiciones', html)} />
+              <SnippetBar
+                onInsert={(html) => insertarBloque('condiciones', html)}
+                onTableAction={(action) => ejecutarAccionTabla('condiciones', action)}
+              />
               <ReactQuill forwardedRef={condicionesEditorRef} theme="snow" value={form.condiciones} onChange={(value) => updateForm('condiciones', value)} className="bg-white min-h-[220px] pb-10" />
             </EditorBlock>
           </div>
@@ -315,10 +516,10 @@ function EditorBlock({ title, subtitle, children }) {
   );
 }
 
-function SnippetBar({ onInsert }) {
+function SnippetBar({ onInsert, onTableAction }) {
   return (
-    <div className="mb-3 rounded-lg border border-slate-200 bg-white p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
+    <div className="mb-3 space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+      <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-extrabold uppercase text-slate-500">Bloques rapidos</p>
         <span className="rounded-full bg-teal-50 px-2 py-1 text-[11px] font-bold text-teal-700">PDF ready</span>
       </div>
@@ -333,6 +534,24 @@ function SnippetBar({ onInsert }) {
             {snippet.label}
           </button>
         ))}
+      </div>
+      <div className="border-t border-slate-200 pt-3">
+        <p className="mb-2 text-xs font-extrabold uppercase text-slate-500">Edicion de tabla</p>
+        <div className="flex flex-wrap gap-2">
+          {tableActions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                onTableAction(action.id);
+              }}
+              className={`rounded-lg border px-3 py-2 text-xs font-bold ${action.id === 'delete-table' ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100' : 'border-slate-200 bg-white text-slate-700 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-800'}`}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

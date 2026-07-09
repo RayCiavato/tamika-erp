@@ -118,6 +118,7 @@ export default function TamikaERP() {
   const [condiciones, setCondiciones] = useState(DEFAULT_TERMS);
   const [contenidoPropuesta, setContenidoPropuesta] = useState(DEFAULT_PROPUESTA_CONTENT);
   const [datosPdf, setDatosPdf] = useState(DEFAULT_PDF_DATA);
+  const [saludoEditadoManual, setSaludoEditadoManual] = useState(false);
 
   const [advMode, setAdvMode] = useState(true);
   const [defGan, setDefGan] = useState('0,30');
@@ -195,6 +196,18 @@ export default function TamikaERP() {
     if (authUser && !cotiEditandoId) cargarSiguienteCorrelativo(tipoDocumento);
   }, [tipoDocumento, cotiEditandoId, authUser]);
 
+  useEffect(() => {
+    if (saludoEditadoManual || !datosPdf.clienteNombre) return;
+    const saludoEsperado = saludoParaCliente(datosPdf.clienteNombre);
+    if (datosPdf.saludo === saludoEsperado) return;
+
+    setDatosPdf((prev) => {
+      if (!prev.clienteNombre || saludoEditadoManual) return prev;
+      const siguienteSaludo = saludoParaCliente(prev.clienteNombre);
+      return prev.saludo === siguienteSaludo ? prev : { ...prev, saludo: siguienteSaludo };
+    });
+  }, [datosPdf.clienteNombre, saludoEditadoManual]);
+
   const cargarSiguienteCorrelativo = async (tipo = tipoDocumento) => {
     try {
       const res = await apiFetch(`/api/propuestas/siguiente-correlativo?tipoDocumento=${tipo}`);
@@ -221,7 +234,7 @@ export default function TamikaERP() {
         clienteDireccion: '',
         clienteTelefono: '',
         clienteEmail: '',
-        saludo: saludoEsAutomatico(prev) ? DEFAULT_SALUDO : prev.saludo,
+        saludo: saludoEditadoManual ? prev.saludo : DEFAULT_SALUDO,
       }));
       return;
     }
@@ -229,7 +242,7 @@ export default function TamikaERP() {
     const cliente = clientes.find((item) => item.id === clienteId);
     setDatosPdf((prev) => ({
       ...datosPdfDesdeCliente(cliente, prev, true),
-      saludo: saludoEsAutomatico(prev) ? saludoParaCliente(cliente?.nombre) : prev.saludo,
+      saludo: saludoEditadoManual ? prev.saludo : saludoParaCliente(cliente?.nombre),
     }));
   };
 
@@ -238,6 +251,9 @@ export default function TamikaERP() {
   };
 
   const updateDatosPdf = (field, value) => {
+    if (field === 'saludo') {
+      setSaludoEditadoManual(!saludoEsAutomatico({ ...datosPdf, saludo: value }));
+    }
     setDatosPdf((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -423,6 +439,7 @@ export default function TamikaERP() {
     setCondiciones(DEFAULT_TERMS);
     setContenidoPropuesta(DEFAULT_PROPUESTA_CONTENT);
     setDatosPdf(DEFAULT_PDF_DATA);
+    setSaludoEditadoManual(false);
     setItemsCoti([]);
     cargarSiguienteCorrelativo('PROPUESTA');
   };
@@ -503,7 +520,9 @@ export default function TamikaERP() {
     setVigencia(coti.vigencia || DEFAULT_VIGENCIA);
     setCondiciones(coti.condiciones || DEFAULT_TERMS);
     setContenidoPropuesta(coti.contenidoPropuesta || DEFAULT_PROPUESTA_CONTENT);
-    setDatosPdf(datosPdfDesdeCliente(coti.cliente, coti.datosPdf || {}));
+    const datosPdfCargados = datosPdfDesdeCliente(coti.cliente, coti.datosPdf || {});
+    setDatosPdf(datosPdfCargados);
+    setSaludoEditadoManual(!saludoEsAutomatico(datosPdfCargados));
     setItemsCoti(Array.isArray(coti.items) ? coti.items : []);
     setShowModal(false);
   };
@@ -643,7 +662,7 @@ export default function TamikaERP() {
       });
       const headerRightBlock = {
         table: {
-          widths: [180],
+          widths: [138],
           body: [
             [{
               text: nombreDocumento,
@@ -671,7 +690,7 @@ export default function TamikaERP() {
           ],
         },
         layout: 'noBorders',
-        absolutePosition: { x: 410, y: 38 },
+        absolutePosition: { x: 450, y: 38 },
       };
 
       const docDefinition = {

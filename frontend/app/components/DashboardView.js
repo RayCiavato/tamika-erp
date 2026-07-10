@@ -46,6 +46,11 @@ const estadoStyles = {
   ANULADO: 'bg-slate-200 text-slate-700',
 };
 
+const metodoPagoLabels = {
+  EFECTIVO: 'Efectivo',
+  TRANSFERENCIA: 'Transferencia',
+};
+
 const toneStyles = {
   slate: {
     card: 'border-slate-200 bg-white text-slate-950',
@@ -90,7 +95,7 @@ const valueSizeClass = (value, compact = false) => {
   return 'text-3xl';
 };
 
-export default function DashboardView({ resumen, loading, apiFetch, tasasActuales, starlinkAlertas = [], onOpenStarlink }) {
+export default function DashboardView({ resumen, loading, apiFetch, tasasActuales, starlinkAlertas = [], onOpenStarlink, onOpenMovimiento }) {
   const kpis = resumen?.kpis || {};
   const ultimosMovimientos = resumen?.ultimosMovimientos || [];
   const [periodo, setPeriodo] = useState('mensual');
@@ -204,7 +209,7 @@ export default function DashboardView({ resumen, loading, apiFetch, tasasActuale
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h3 className="font-bold text-slate-950">Últimos movimientos contables</h3>
-            <p className="text-sm text-slate-500">Actividad reciente registrada en contabilidad.</p>
+            <p className="text-sm text-slate-500">Selecciona un movimiento para gestionarlo en contabilidad.</p>
           </div>
           <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">{ultimosMovimientos.length} registros</span>
         </div>
@@ -226,12 +231,21 @@ export default function DashboardView({ resumen, loading, apiFetch, tasasActuale
                 </tr>
               )}
               {ultimosMovimientos.map((mov) => (
-                <tr key={mov.id} className="border-b last:border-b-0 hover:bg-slate-50">
+                <tr
+                  key={mov.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onOpenMovimiento?.(mov.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') onOpenMovimiento?.(mov.id);
+                  }}
+                  className="cursor-pointer border-b outline-none last:border-b-0 hover:bg-teal-50 focus:bg-teal-50"
+                >
                   <td className="p-3 text-slate-500">{new Date(mov.fechaMovimiento).toLocaleDateString('es-VE', { timeZone: 'UTC' })}</td>
                   <td className="p-3 font-medium">{tipoLabel[mov.tipo] || mov.tipo}</td>
                   <td className="p-3">
                     <p className="font-semibold text-slate-900">{mov.concepto}</p>
-                    <p className="text-xs text-slate-500">{clienteEtiqueta(mov.cliente) || mov.referencia || '-'}</p>
+                    <p className="text-xs text-slate-500">{metodoPagoLabels[mov.metodoPago] || clienteEtiqueta(mov.cliente) || mov.referencia || '-'}</p>
                   </td>
                   <td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${estadoStyles[mov.estado] || 'bg-slate-100 text-slate-700'}`}>{mov.estado}</span></td>
                   <td className="p-3 text-right font-bold tabular-nums">{formatUsd(mov.montoUsd)}</td>

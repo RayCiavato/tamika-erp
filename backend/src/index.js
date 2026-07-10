@@ -21,6 +21,8 @@ const DOCUMENTO_ESTADOS = ['BORRADOR', 'APROBADO', 'CONVERTIDO', 'FACTURADO', 'A
 const PLANTILLA_DOCUMENTO_TIPOS = ['PROPUESTA', 'PRESUPUESTO', 'AMBOS'];
 const TASA_FUENTES = ['BCV_API', 'MANUAL', 'CACHE', 'FALLBACK'];
 const MOVIMIENTO_CATEGORIAS = ['Servicio', 'Producto', 'Nomina', 'Pago de factura', 'Suscripcion', 'Otro'];
+const METODOS_PAGO = ['EFECTIVO', 'TRANSFERENCIA'];
+const ASOCIACION_TIPOS = ['PRODUCTO', 'SERVICIO'];
 const DEFAULT_BCV_API_URL = 'https://ve.dolarapi.com/v1/dolares/oficial';
 const DEFAULT_PARALELO_API_URL = 'https://ve.dolarapi.com/v1/dolares/paralelo';
 const BCV_API_TIMEOUT_MS = readPositiveNumber(process.env.BCV_API_TIMEOUT_MS, 5000);
@@ -429,6 +431,38 @@ const validarNumeroDisponible = async (tx, numero, idActual = null) => {
   return null;
 };
 
+const normalizeCotizacionAsociaciones = (value) => {
+  if (value === undefined) return { data: [], provided: false };
+  if (!Array.isArray(value)) return { errors: ['asociaciones debe ser un arreglo.'], provided: true };
+
+  const errors = [];
+  const data = value.map((item, index) => {
+    const tipo = item?.tipo?.toString().trim().toUpperCase();
+    const cantidad = toNumber(item?.cantidad);
+    const precioUsd = toNumber(item?.precioUsd);
+    const productoId = tipo === 'PRODUCTO' ? item?.productoId?.toString().trim() || null : null;
+    const servicioId = tipo === 'SERVICIO' ? item?.servicioId?.toString().trim() || null : null;
+
+    if (!ASOCIACION_TIPOS.includes(tipo)) errors.push(`asociaciones[${index}].tipo debe ser PRODUCTO o SERVICIO.`);
+    if (tipo === 'PRODUCTO' && !productoId) errors.push(`asociaciones[${index}].productoId es obligatorio.`);
+    if (tipo === 'SERVICIO' && !servicioId) errors.push(`asociaciones[${index}].servicioId es obligatorio.`);
+    if (Number.isNaN(cantidad) || cantidad === null || cantidad <= 0) errors.push(`asociaciones[${index}].cantidad debe ser mayor que 0.`);
+    if (item?.precioUsd !== undefined && item?.precioUsd !== null && item?.precioUsd !== '' && (Number.isNaN(precioUsd) || precioUsd < 0)) {
+      errors.push(`asociaciones[${index}].precioUsd debe ser mayor o igual a 0.`);
+    }
+
+    return {
+      tipo,
+      productoId,
+      servicioId,
+      cantidad: Number.isNaN(cantidad) || cantidad === null ? 1 : cantidad,
+      precioUsd: Number.isNaN(precioUsd) || precioUsd === null ? null : precioUsd,
+    };
+  });
+
+  return errors.length ? { errors, provided: true } : { data, provided: true };
+};
+
 const normalizeCotizacionPayload = (body) => {
   const errors = [];
   const tipoDocumento = body.tipoDocumento || 'PROPUESTA';
@@ -438,6 +472,7 @@ const normalizeCotizacionPayload = (body) => {
   const total = toNumber(body.total);
   const items = Array.isArray(body.items) ? body.items : [];
   const numero = body.numero?.toString().trim() || null;
+  const asociaciones = normalizeCotizacionAsociaciones(body.asociaciones);
 
   if (!DOCUMENTO_TIPOS.includes(tipoDocumento)) errors.push('tipoDocumento debe ser PROPUESTA o PRESUPUESTO.');
   if (!DOCUMENTO_ESTADOS.includes(estado)) errors.push('estado debe ser valido.');
@@ -449,6 +484,7 @@ const normalizeCotizacionPayload = (body) => {
   if (Number.isNaN(subtotal) || subtotal === null || subtotal < 0) errors.push('subtotal debe ser numerico y mayor o igual a 0.');
   if (Number.isNaN(iva) || iva === null || iva < 0) errors.push('iva debe ser numerico y mayor o igual a 0.');
   if (Number.isNaN(total) || total === null || total < 0) errors.push('total debe ser numerico y mayor o igual a 0.');
+  if (asociaciones.errors) errors.push(...asociaciones.errors);
 
   if (errors.length) return { errors };
 
@@ -474,6 +510,8 @@ const normalizeCotizacionPayload = (body) => {
       estado,
     },
     numero,
+    asociaciones: asociaciones.data || [],
+    asociacionesProvided: asociaciones.provided,
   };
 };
 
@@ -521,6 +559,7 @@ const normalizeMovimientoPayload = async (body) => {
   let tasaFecha = parseDate(body.tasaFecha);
   const tasaEditadaManual = body.tasaEditadaManual === true || body.tasaEditadaManual === 'true';
   let tasaFuente = body.tasaFuente?.toString().trim() || null;
+  const metodoPago = body.metodoPago?.toString().trim().toUpperCase() || null;
   const tieneTasaInput = body.tasaBcv !== undefined && body.tasaBcv !== null && body.tasaBcv !== '';
 
   if (!MOVIMIENTO_TIPOS.includes(tipo)) errors.push('tipo debe ser valido.');
@@ -533,6 +572,7 @@ const normalizeMovimientoPayload = async (body) => {
   if (body.montoBs !== undefined && body.montoBs !== null && body.montoBs !== '' && (Number.isNaN(montoBsInput) || montoBsInput < 0)) errors.push('montoBs debe ser numerico y mayor o igual a 0.');
   if (tasaFuente && !TASA_FUENTES.includes(tasaFuente)) errors.push('tasaFuente debe ser valida.');
   if (categoria && !MOVIMIENTO_CATEGORIAS.includes(categoria)) errors.push('categoria debe ser valida.');
+  if (metodoPago && !METODOS_PAGO.includes(metodoPago)) errors.push('metodoPago debe ser EFECTIVO o TRANSFERENCIA.');
 
   if (errors.length) return { errors };
 
@@ -567,6 +607,7 @@ const normalizeMovimientoPayload = async (body) => {
       fechaMovimiento,
       fechaVencimiento,
       estado,
+      metodoPago,
       clienteId: body.clienteId || null,
       proveedorId: body.proveedorId?.toString().trim() || null,
       productoId: body.productoId || null,
@@ -574,6 +615,7 @@ const normalizeMovimientoPayload = async (body) => {
       tipoProductoId: body.tipoProductoId || null,
       tipoServicioId: body.tipoServicioId || null,
       referencia: body.referencia?.toString().trim() || null,
+      movimientoRelacionadoId: body.movimientoRelacionadoId || null,
     },
   };
 };
@@ -650,6 +692,9 @@ const buildContabilidadWhere = (query) => {
 
   const desde = parseDate(query.desde);
   const hasta = parseDate(query.hasta);
+  if (hasta && /^\d{4}-\d{2}-\d{2}$/.test(query.hasta?.toString() || '')) {
+    hasta.setHours(23, 59, 59, 999);
+  }
   if (desde || hasta) {
     filters.push({
       fechaMovimiento: {
@@ -680,6 +725,31 @@ const movimientoInclude = {
   servicio: { include: { tipoServicio: true } },
   tipoProducto: true,
   tipoServicio: true,
+  movimientoRelacionado: {
+    include: {
+      cliente: true,
+      producto: true,
+    },
+  },
+};
+
+const cotizacionInclude = {
+  cliente: true,
+  asociaciones: {
+    include: {
+      producto: true,
+      servicio: true,
+    },
+    orderBy: { createdAt: 'asc' },
+  },
+};
+
+const reemplazarAsociacionesCotizacion = async (tx, cotizacionId, asociaciones = []) => {
+  await tx.cotizacionAsociacion.deleteMany({ where: { cotizacionId } });
+  if (!asociaciones.length) return;
+  await tx.cotizacionAsociacion.createMany({
+    data: asociaciones.map((asociacion) => ({ ...asociacion, cotizacionId })),
+  });
 };
 
 const generarCodigoCliente = async (tx, fecha = new Date()) => {
@@ -771,7 +841,46 @@ const calcularBalancePorPeriodo = (movimientos, periodo) => {
   return Array.from(buckets.values()).sort((a, b) => a.label.localeCompare(b.label));
 };
 
-const buildReporteContable = (movimientos) => {
+const calcularComparativoMensual = (movimientos, meses = 12) => {
+  const limite = Math.min(Math.max(Number.parseInt(meses, 10) || 12, 2), 24);
+  const fechasValidas = movimientos
+    .map((movimiento) => new Date(movimiento.fechaMovimiento))
+    .filter((fecha) => !Number.isNaN(fecha.getTime()));
+  const fechaFinal = fechasValidas.length
+    ? new Date(Math.max(...fechasValidas.map((fecha) => fecha.getTime())))
+    : new Date();
+  fechaFinal.setDate(1);
+  fechaFinal.setHours(0, 0, 0, 0);
+
+  const buckets = new Map();
+  for (let offset = limite - 1; offset >= 0; offset -= 1) {
+    const fecha = new Date(fechaFinal.getFullYear(), fechaFinal.getMonth() - offset, 1);
+    const key = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+    buckets.set(key, { mes: key, ingresos: 0, egresos: 0, porCobrar: 0, porPagar: 0, balance: 0 });
+  }
+
+  movimientos.forEach((mov) => {
+    if (mov.estado === 'ANULADO') return;
+    const fecha = new Date(mov.fechaMovimiento);
+    if (Number.isNaN(fecha.getTime())) return;
+    const key = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+    const bucket = buckets.get(key);
+    if (!bucket) return;
+
+    const monto = Number(mov.montoUsd || 0);
+    const ingresoReal = (mov.tipo === 'INGRESO' || mov.tipo === 'CUENTA_POR_COBRAR') && mov.estado === 'PAGADO';
+    const egresoReal = (mov.tipo === 'EGRESO' || mov.tipo === 'CUENTA_POR_PAGAR') && mov.estado === 'PAGADO';
+    if (ingresoReal) bucket.ingresos += monto;
+    if (egresoReal) bucket.egresos += monto;
+    if (mov.tipo === 'CUENTA_POR_COBRAR' && PENDIENTE_ESTADOS.includes(mov.estado)) bucket.porCobrar += monto;
+    if (mov.tipo === 'CUENTA_POR_PAGAR' && PENDIENTE_ESTADOS.includes(mov.estado)) bucket.porPagar += monto;
+    bucket.balance = bucket.ingresos - bucket.egresos;
+  });
+
+  return Array.from(buckets.values());
+};
+
+const buildReporteContable = (movimientos, mesesComparativo = 12) => {
   const empty = () => ({ items: [], subtotalUsd: 0, subtotalBs: 0 });
   const secciones = {
     ingresos: empty(),
@@ -801,7 +910,7 @@ const buildReporteContable = (movimientos) => {
   });
 
   const resumen = calcularResumenContable(movimientos);
-  return { secciones, resumen };
+  return { secciones, resumen, comparativoMensual: calcularComparativoMensual(movimientos, mesesComparativo) };
 };
 
 // AUTH
@@ -1019,6 +1128,25 @@ app.get('/api/clientes', async (req, res) => {
   }
 });
 
+app.get('/api/clientes/:id/productos-adquiridos', async (req, res) => {
+  try {
+    const movimientos = await prisma.movimientoContable.findMany({
+      where: {
+        clienteId: req.params.id,
+        productoId: { not: null },
+        estado: { not: 'ANULADO' },
+      },
+      include: {
+        producto: true,
+      },
+      orderBy: [{ fechaMovimiento: 'desc' }, { createdAt: 'desc' }],
+    });
+    res.json(movimientos);
+  } catch (error) {
+    serializeError(res, 500, 'No se pudieron cargar los productos adquiridos por el cliente.');
+  }
+});
+
 app.post('/api/clientes', async (req, res) => {
   try {
     const normalized = normalizeClientePayload(req.body);
@@ -1086,7 +1214,7 @@ const listarCotizaciones = async (req, res) => {
 
     res.json(await prisma.cotizacion.findMany({
       where,
-      include: { cliente: true },
+      include: cotizacionInclude,
       orderBy: { fecha: 'desc' },
     }));
   } catch (error) {
@@ -1098,7 +1226,7 @@ const obtenerCotizacion = async (req, res) => {
   try {
     const cotizacion = await prisma.cotizacion.findFirst({
       where: { id: req.params.id, deletedAt: null },
-      include: { cliente: true },
+      include: cotizacionInclude,
     });
 
     if (!cotizacion) return serializeError(res, 404, 'Documento no encontrado.');
@@ -1169,10 +1297,13 @@ const crearCotizacion = async (req, res) => {
         }
 
         const data = await completarSnapshotsCotizacion(tx, normalized.data);
-        return tx.cotizacion.create({
+        const creada = await tx.cotizacion.create({
           data: { ...data, numero },
-          include: { cliente: true },
         });
+        if (normalized.asociacionesProvided) {
+          await reemplazarAsociacionesCotizacion(tx, creada.id, normalized.asociaciones);
+        }
+        return tx.cotizacion.findUnique({ where: { id: creada.id }, include: cotizacionInclude });
       });
 
       await logAudit(req, {
@@ -1187,7 +1318,7 @@ const crearCotizacion = async (req, res) => {
       if (error.statusCode === 409) return serializeError(res, 409, error.message);
       if (error.code === 'P2002' && !normalized.numero) continue;
       if (error.code === 'P2002') return serializeError(res, 409, 'Ya existe un documento con ese correlativo.');
-      if (error.code === 'P2003') return serializeError(res, 400, 'Cliente invalido.');
+      if (error.code === 'P2003') return serializeError(res, 400, 'Cliente, producto o servicio asociado invalido.');
       return serializeError(res, 500, 'No se pudo crear la propuesta.');
     }
   }
@@ -1229,11 +1360,14 @@ const actualizarCotizacion = async (req, res) => {
           }
 
           const data = await completarSnapshotsCotizacion(tx, normalized.data);
-          return tx.cotizacion.update({
+          const actualizada = await tx.cotizacion.update({
             where: { id: req.params.id },
             data: { ...data, numero },
-            include: { cliente: true },
           });
+          if (normalized.asociacionesProvided) {
+            await reemplazarAsociacionesCotizacion(tx, actualizada.id, normalized.asociaciones);
+          }
+          return tx.cotizacion.findUnique({ where: { id: actualizada.id }, include: cotizacionInclude });
         });
 
         await logAudit(req, {
@@ -1248,7 +1382,7 @@ const actualizarCotizacion = async (req, res) => {
         if (error.statusCode === 409) return serializeError(res, 409, error.message);
         if (error.code === 'P2002' && !numeroSolicitado) continue;
         if (error.code === 'P2002') return serializeError(res, 409, 'Ya existe un documento con ese correlativo.');
-        if (error.code === 'P2003') return serializeError(res, 400, 'Cliente invalido.');
+        if (error.code === 'P2003') return serializeError(res, 400, 'Cliente, producto o servicio asociado invalido.');
         return serializeError(res, 500, 'No se pudo actualizar la propuesta.');
       }
     }
@@ -1516,13 +1650,14 @@ app.get('/api/dashboard/balance', async (req, res) => {
 app.get('/api/reportes/contabilidad', async (req, res) => {
   try {
     const where = buildContabilidadWhere(req.query);
+    const mesesComparativo = Math.min(Math.max(Number.parseInt(req.query.mesesComparativo, 10) || 12, 2), 24);
     const movimientos = await prisma.movimientoContable.findMany({
       where,
       include: movimientoInclude,
       orderBy: [{ fechaMovimiento: 'asc' }, { createdAt: 'asc' }],
     });
 
-    res.json(buildReporteContable(movimientos));
+    res.json(buildReporteContable(movimientos, mesesComparativo));
   } catch (error) {
     serializeError(res, 500, 'No se pudo cargar el reporte contable.');
   }
@@ -1577,6 +1712,23 @@ app.get('/api/contabilidad', async (req, res) => {
   }
 });
 
+app.get('/api/contabilidad/grafica', async (req, res) => {
+  try {
+    const meses = Math.min(Math.max(Number.parseInt(req.query.meses, 10) || 12, 2), 24);
+    const inicio = new Date();
+    inicio.setDate(1);
+    inicio.setMonth(inicio.getMonth() - (meses - 1));
+    inicio.setHours(0, 0, 0, 0);
+    const movimientos = await prisma.movimientoContable.findMany({
+      where: { fechaMovimiento: { gte: inicio } },
+      orderBy: { fechaMovimiento: 'asc' },
+    });
+    res.json({ meses, data: calcularComparativoMensual(movimientos, meses) });
+  } catch (error) {
+    serializeError(res, 500, 'No se pudo cargar la grafica contable.');
+  }
+});
+
 app.get('/api/contabilidad/:id', async (req, res) => {
   try {
     const movimiento = await prisma.movimientoContable.findUnique({
@@ -1588,6 +1740,42 @@ app.get('/api/contabilidad/:id', async (req, res) => {
     res.json(movimiento);
   } catch (error) {
     serializeError(res, 500, 'No se pudo cargar el movimiento.');
+  }
+});
+
+app.post('/api/contabilidad/lote', async (req, res) => {
+  try {
+    const movimientosPayload = Array.isArray(req.body.movimientos) ? req.body.movimientos : [];
+    if (!movimientosPayload.length) return serializeError(res, 400, 'Debes enviar al menos un movimiento.');
+    if (movimientosPayload.length > 50) return serializeError(res, 400, 'El lote no puede superar 50 movimientos.');
+
+    const normalizados = [];
+    const errors = [];
+    for (let index = 0; index < movimientosPayload.length; index += 1) {
+      const normalized = await normalizeMovimientoPayload(movimientosPayload[index]);
+      if (normalized.errors) errors.push(...normalized.errors.map((error) => `movimientos[${index}]: ${error}`));
+      else normalizados.push(normalized.data);
+    }
+    if (errors.length) return serializeError(res, 400, 'Datos invalidos.', errors);
+
+    const movimientos = await prisma.$transaction(async (tx) => {
+      const creados = [];
+      for (const data of normalizados) {
+        creados.push(await tx.movimientoContable.create({ data, include: movimientoInclude }));
+      }
+      return creados;
+    });
+
+    await logAudit(req, {
+      accion: 'MOVIMIENTO_BATCH_CREATE',
+      entidad: 'MovimientoContable',
+      descripcion: `Lote de ${movimientos.length} movimientos contables creado.`,
+      metadata: { ids: movimientos.map((movimiento) => movimiento.id), total: movimientos.length },
+    });
+    res.status(201).json({ movimientos, total: movimientos.length });
+  } catch (error) {
+    if (error.code === 'P2003') return serializeError(res, 400, 'Cliente, producto, servicio o movimiento relacionado invalido.');
+    serializeError(res, 500, 'No se pudo crear el lote contable.');
   }
 });
 
@@ -1606,10 +1794,11 @@ app.post('/api/contabilidad', async (req, res) => {
       entidad: 'MovimientoContable',
       entidadId: movimiento.id,
       descripcion: `Movimiento contable creado: ${movimiento.concepto}.`,
-      metadata: { tipo: movimiento.tipo, estado: movimiento.estado, montoUsd: movimiento.montoUsd },
+      metadata: { tipo: movimiento.tipo, estado: movimiento.estado, montoUsd: movimiento.montoUsd, metodoPago: movimiento.metodoPago, movimientoRelacionadoId: movimiento.movimientoRelacionadoId },
     });
     res.status(201).json(movimiento);
   } catch (error) {
+    if (error.code === 'P2003') return serializeError(res, 400, 'Cliente, producto, servicio o movimiento relacionado invalido.');
     serializeError(res, 500, 'No se pudo crear el movimiento contable.');
   }
 });
@@ -1637,6 +1826,9 @@ app.put('/api/contabilidad/:id', async (req, res) => {
 
     const normalized = await normalizeMovimientoPayload(merged);
     if (normalized.errors) return serializeError(res, 400, 'Datos invalidos.', normalized.errors);
+    if (normalized.data.movimientoRelacionadoId === actual.id) {
+      return serializeError(res, 400, 'Un movimiento no puede relacionarse consigo mismo.');
+    }
 
     const movimiento = await prisma.movimientoContable.update({
       where: { id: req.params.id },
@@ -1657,10 +1849,13 @@ app.put('/api/contabilidad/:id', async (req, res) => {
         estadoNuevo: movimiento.estado,
         montoUsd: movimiento.montoUsd,
         tasaEditadaManual: movimiento.tasaEditadaManual,
+        metodoPago: movimiento.metodoPago,
+        movimientoRelacionadoId: movimiento.movimientoRelacionadoId,
       },
     });
     res.json(movimiento);
   } catch (error) {
+    if (error.code === 'P2003') return serializeError(res, 400, 'Cliente, producto, servicio o movimiento relacionado invalido.');
     serializeError(res, 500, 'No se pudo actualizar el movimiento contable.');
   }
 });

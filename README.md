@@ -67,10 +67,12 @@ Estos pasos estan pensados para actualizar el servidor sin perjudicar la base de
 
 1. Confirma que el servidor esta apuntando a la base de datos real en `DATABASE_URL`.
 2. No reemplaces el `.env` del servidor con un `.env` local.
-3. Genera un respaldo antes de tocar el codigo:
+3. Respalda el `.env` y la base antes de tocar el codigo:
 
 ```bash
-pg_dump "$DATABASE_URL" > backup_tamika_erp_$(date +%Y%m%d_%H%M).sql
+cp .env .env.backup_$(date +%Y%m%d_%H%M)
+docker compose exec -T db sh -lc 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > backup_tamika_erp_$(date +%Y%m%d_%H%M).sql
+ls -lh .env.backup_* backup_tamika_erp_*.sql
 ```
 
 4. Guarda el commit actual para poder volver atras si hace falta:
@@ -98,16 +100,21 @@ createdb --clean
 Desde la carpeta del proyecto en el servidor:
 
 ```bash
-git fetch --all
+git status --short
+git fetch origin
 git checkout main
-git pull --ff-only
-docker compose build
-docker compose run --rm backend npx prisma generate
-docker compose run --rm backend npx prisma migrate deploy
+git pull --ff-only origin main
+docker compose build backend frontend
+docker compose run --rm backend sh -lc 'npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --script' > prisma_update_preview.sql
+grep -Ei 'DROP|TRUNCATE|DELETE FROM' prisma_update_preview.sql
+docker compose run --rm backend npx prisma db push
 docker compose up -d
+docker compose ps
 ```
 
-`prisma migrate deploy` aplica solo migraciones pendientes. No reinicia la base de datos y es el comando recomendado para produccion.
+El `grep` no debe mostrar operaciones destructivas. Este repositorio aun no incluye una carpeta `prisma/migrations`, por eso la sincronizacion se realiza con `prisma db push` despues del respaldo y la vista previa. Nunca agregues `--force-reset` ni `--accept-data-loss` en produccion.
+
+La actualizacion actual solo agrega columnas opcionales (`metodoPago`, `movimientoRelacionadoId`), sus indices y la tabla de asociaciones de cotizaciones. No elimina ni renombra tablas o columnas existentes.
 
 ### Actualizacion sin Docker
 
@@ -117,7 +124,8 @@ Backend:
 cd backend
 npm ci
 npx prisma generate
-npx prisma migrate deploy
+npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --script > ../prisma_update_preview.sql
+npx prisma db push
 pm2 restart tamika-backend
 ```
 
@@ -139,7 +147,9 @@ Ajusta los nombres de `pm2` si en el servidor se usan otros procesos.
 3. Revisa `Propuestas`, `Contabilidad`, `Reportes`, `Catalogos` y `Usuarios`.
 4. Genera una propuesta o presupuesto en PDF y confirma que el membrete, correlativo, cliente y totales se ven dentro de los margenes.
 5. En `Contabilidad`, valida que la tasa BCV se pueda actualizar y guardar.
-6. Revisa logs si algo no carga:
+6. Confirma el metodo de pago, las graficas y el comparativo mensual de reportes.
+7. Registra dos servicios para un mismo cliente y revisa sus fechas independientes.
+8. Revisa logs si algo no carga:
 
 ```bash
 docker compose logs --tail=100 backend
@@ -174,4 +184,4 @@ Cambia esta clave apenas entres al servidor. En una base de datos nueva, el prim
 
 - `.env` no debe subirse al repositorio.
 - El frontend usa `/api/*` y Next redirige esas rutas al backend dentro de Docker.
-- El modelo `Venta` existe en Prisma, pero actualmente no tiene pantalla ni endpoints.
+- Las ventas de productos y servicios quedan registradas como movimientos contables y conservan su traza de auditoria.

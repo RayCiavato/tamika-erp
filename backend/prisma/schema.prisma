@@ -66,6 +66,26 @@ model Cotizacion {
   clienteEmailSnapshot     String?
   estado                   String        @default("BORRADOR")
   deletedAt                DateTime?
+  asociaciones             CotizacionAsociacion[]
+}
+
+model CotizacionAsociacion {
+  id           String     @id @default(uuid())
+  cotizacionId String
+  cotizacion   Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+  tipo         String
+  productoId   String?
+  producto     Producto?  @relation(fields: [productoId], references: [id], onDelete: SetNull)
+  servicioId   String?
+  servicio     Servicio?  @relation(fields: [servicioId], references: [id], onDelete: SetNull)
+  cantidad     Float      @default(1)
+  precioUsd    Float?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([cotizacionId])
+  @@index([productoId])
+  @@index([servicioId])
 }
 
 model PlantillaDocumento {
@@ -121,6 +141,7 @@ model MovimientoContable {
   fechaMovimiento   DateTime
   fechaVencimiento  DateTime?
   estado            MovimientoEstado @default(PENDIENTE)
+  metodoPago        String?
   clienteId         String?
   cliente           Cliente?         @relation(fields: [clienteId], references: [id])
   proveedorId       String?
@@ -133,8 +154,13 @@ model MovimientoContable {
   tipoServicioId    String?
   tipoServicio      TipoServicio?    @relation(fields: [tipoServicioId], references: [id])
   referencia        String?
+  movimientoRelacionadoId String?
+  movimientoRelacionado   MovimientoContable?  @relation("MovimientoRelacionado", fields: [movimientoRelacionadoId], references: [id], onDelete: SetNull)
+  movimientosRelacionados MovimientoContable[] @relation("MovimientoRelacionado")
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
+
+  @@index([movimientoRelacionadoId])
 }
 
 model Usuario {
@@ -193,6 +219,7 @@ model Servicio {
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
   movimientosContables MovimientoContable[]
+  cotizacionAsociaciones CotizacionAsociacion[]
 }
 
 model TipoProducto {
@@ -219,6 +246,7 @@ model Producto {
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
   movimientosContables MovimientoContable[]
+  cotizacionAsociaciones CotizacionAsociacion[]
 }
 
 model Proveedor {

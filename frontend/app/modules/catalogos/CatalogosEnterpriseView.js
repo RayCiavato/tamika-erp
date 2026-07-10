@@ -36,6 +36,7 @@ const emptyAsignacion = () => ({
   cantidad: '1',
   precioUsd: '',
   estado: 'PAGADO',
+  metodoPago: 'TRANSFERENCIA',
   fechaMovimiento: today(),
   fechaVencimiento: '',
   referencia: '',
@@ -57,6 +58,22 @@ const emptyAsignacion = () => ({
   ubicacion: '',
   fechaRegistro: today(),
   observacionesStarlink: '',
+});
+
+const emptyServiceLine = (tasaBcv = '') => ({
+  id: `${Date.now()}-${Math.random()}`,
+  itemId: '',
+  cantidad: '1',
+  precioUsd: '',
+  estado: 'PAGADO',
+  metodoPago: 'TRANSFERENCIA',
+  fechaMovimiento: today(),
+  fechaVencimiento: '',
+  referencia: '',
+  descripcion: '',
+  tasaBcv,
+  tasaEditadaManual: false,
+  movimientoRelacionadoId: '',
 });
 
 const formatUsd = (value) => currency(value || 0, { symbol: '$', separator: '.', decimal: ',' }).format();
@@ -97,6 +114,11 @@ export default function CatalogosEnterpriseView({
   const [saving, setSaving] = useState(false);
   const [autoCodeLoading, setAutoCodeLoading] = useState('');
   const [tasaEditadaManual, setTasaEditadaManual] = useState(false);
+  const [serviceLines, setServiceLines] = useState([emptyServiceLine()]);
+  const [productosCliente, setProductosCliente] = useState([]);
+  const [loadingProductosCliente, setLoadingProductosCliente] = useState(false);
+  const [ordenCatalogo, setOrdenCatalogo] = useState('codigo');
+  const [direccionOrden, setDireccionOrden] = useState('asc');
 
   const catalogItems = isProductModule ? productos : servicios;
   const selectedItem = catalogItems.find((item) => item.id === asignacion.itemId);
@@ -104,6 +126,9 @@ export default function CatalogosEnterpriseView({
   const cantidad = Math.max(toNumber(asignacion.cantidad, 1), 1);
   const precioUnitario = toNumber(asignacion.precioUsd, 0);
   const totalAsignacion = Number((cantidad * precioUnitario).toFixed(2));
+  const totalServicios = serviceLines.reduce((total, line) => (
+    total + (Math.max(toNumber(line.cantidad, 1), 1) * toNumber(line.precioUsd, 0))
+  ), 0);
   const selectedItemText = [
     selectedItem?.nombre,
     selectedItem?.descripcion,
@@ -127,11 +152,21 @@ export default function CatalogosEnterpriseView({
     const term = buscar.trim().toLowerCase();
     const match = (value) => (value || '').toString().toLowerCase().includes(term);
     const filterRows = (rows, fields) => !term ? rows : rows.filter((row) => fields.some((field) => match(row[field])));
+    const sortRows = (rows, codeField) => [...rows].sort((a, b) => {
+      const values = {
+        codigo: [a[codeField] || '', b[codeField] || ''],
+        nombre: [a.nombre || '', b.nombre || ''],
+        estado: [a.activo ? 'ACTIVO' : 'INACTIVO', b.activo ? 'ACTIVO' : 'INACTIVO'],
+      };
+      const [left, right] = values[ordenCatalogo] || values.codigo;
+      const result = left.toString().localeCompare(right.toString(), 'es', { numeric: true, sensitivity: 'base' });
+      return direccionOrden === 'asc' ? result : -result;
+    });
     return {
-      servicios: filterRows(servicios, ['codigoServicio', 'nombre', 'descripcion']),
-      productos: filterRows(productos, ['codigoProducto', 'nombre', 'descripcion']),
+      servicios: sortRows(filterRows(servicios, ['codigoServicio', 'nombre', 'descripcion']), 'codigoServicio'),
+      productos: sortRows(filterRows(productos, ['codigoProducto', 'nombre', 'descripcion']), 'codigoProducto'),
     };
-  }, [buscar, servicios, productos]);
+  }, [buscar, servicios, productos, ordenCatalogo, direccionOrden]);
 
   const buildLocalCatalogCode = (kind) => {
     const rows = kind === 'servicio' ? servicios : productos;
@@ -152,6 +187,8 @@ export default function CatalogosEnterpriseView({
   useEffect(() => {
     setViewMode('registro');
     setAsignacion({ ...emptyAsignacion(), tasaBcv: tasaBcvSincronizada });
+    setServiceLines([emptyServiceLine(tasaBcvSincronizada)]);
+    setProductosCliente([]);
     setTasaEditadaManual(false);
     setMensaje('');
   }, [activeModule]);
@@ -162,6 +199,9 @@ export default function CatalogosEnterpriseView({
       ...prev,
       tasaBcv: tasaEditadaManual ? prev.tasaBcv : tasaBcvActual.tasa.toString(),
     }));
+    setServiceLines((prev) => prev.map((line) => (
+      line.tasaEditadaManual ? line : { ...line, tasaBcv: tasaBcvActual.tasa.toString() }
+    )));
   }, [tasaBcvActual?.version, tasaEditadaManual]);
 
   const readJson = async (res, fallback) => {
@@ -209,18 +249,64 @@ export default function CatalogosEnterpriseView({
     }
   };
 
+  const cargarProductosCliente = async (clienteId) => {
+    if (!clienteId || isProductModule) {
+      setProductosCliente([]);
+      return;
+    }
+    setLoadingProductosCliente(true);
+    try {
+      const res = await apiFetch(`/api/clientes/${clienteId}/productos-adquiridos`);
+      const data = await readJson(res, 'No se pudieron cargar los productos asociados al cliente.');
+      setProductosCliente(Array.isArray(data) ? data : []);
+    } catch (error) {
+      setProductosCliente([]);
+      setMensaje(error.message);
+    } finally {
+      setLoadingProductosCliente(false);
+    }
+  };
+
   useEffect(() => {
     cargarCatalogos();
   }, []);
+
+  useEffect(() => {
+    cargarProductosCliente(asignacion.clienteId);
+  }, [asignacion.clienteId, isProductModule]);
 
   const resetForms = () => {
     setServicioForm(emptyServicio);
     setProductoForm(emptyProducto);
     setAsignacion({ ...emptyAsignacion(), tasaBcv: tasaBcvSincronizada });
+    setServiceLines([emptyServiceLine(tasaBcvSincronizada)]);
     setTasaEditadaManual(false);
   };
 
   const updateAsignacion = (field, value) => setAsignacion((prev) => ({ ...prev, [field]: value }));
+  const updateServiceLine = (lineId, field, value) => {
+    setServiceLines((prev) => prev.map((line) => {
+      if (line.id !== lineId) return line;
+      if (field === 'itemId') {
+        const servicio = servicios.find((item) => item.id === value);
+        return {
+          ...line,
+          itemId: value,
+          descripcion: servicio?.descripcion || '',
+          precioUsd: '',
+        };
+      }
+      if (field === 'tasaBcv') return { ...line, tasaBcv: value, tasaEditadaManual: true };
+      return { ...line, [field]: value };
+    }));
+  };
+  const addServiceLine = () => setServiceLines((prev) => [...prev, emptyServiceLine(tasaBcvSincronizada)]);
+  const removeServiceLine = (lineId) => setServiceLines((prev) => (
+    prev.length === 1 ? prev : prev.filter((line) => line.id !== lineId)
+  ));
+  const syncServiceLineRate = (lineId) => setServiceLines((prev) => prev.map((line) => (
+    line.id === lineId ? { ...line, tasaBcv: tasaBcvSincronizada || line.tasaBcv, tasaEditadaManual: false } : line
+  )));
   const sincronizarTasaFormulario = () => {
     setTasaEditadaManual(false);
     if (tasaBcvSincronizada) updateAsignacion('tasaBcv', tasaBcvSincronizada);
@@ -236,6 +322,7 @@ export default function CatalogosEnterpriseView({
       clienteId,
       cuentaStarlinkId: '',
     }));
+    setServiceLines((prev) => prev.map((line) => ({ ...line, movimientoRelacionadoId: '' })));
     setClientesOpen(false);
   };
 
@@ -357,6 +444,7 @@ export default function CatalogosEnterpriseView({
     const payload = {
       tipo: asignacion.estado === 'PAGADO' ? 'INGRESO' : 'CUENTA_POR_COBRAR',
       estado: asignacion.estado,
+      metodoPago: asignacion.estado === 'PAGADO' ? asignacion.metodoPago : null,
       concepto: `${isProductModule ? 'Producto' : 'Servicio'} adquirido: ${selectedItem?.nombre || singularTitle}`,
       descripcion: asignacion.descripcion || selectedItem?.descripcion || null,
       montoUsd: totalAsignacion,
@@ -370,6 +458,7 @@ export default function CatalogosEnterpriseView({
       tipoProductoId: isProductModule ? selectedItem?.tipoProductoId || null : null,
       tipoServicioId: isProductModule ? null : selectedItem?.tipoServicioId || null,
       referencia: asignacion.referencia || `${selectedCliente?.codigoCliente || 'CLI'}-${Date.now()}`,
+      movimientoRelacionadoId: null,
     };
     const res = await apiFetch('/api/contabilidad', {
       method: 'POST',
@@ -377,6 +466,41 @@ export default function CatalogosEnterpriseView({
       body: JSON.stringify(payload),
     });
     return readJson(res, 'No se pudo registrar la adquisicion en contabilidad.');
+  };
+
+  const crearLoteServicios = async () => {
+    const movimientos = serviceLines.map((line, index) => {
+      const servicio = servicios.find((item) => item.id === line.itemId);
+      if (!servicio) throw new Error(`Selecciona el servicio de la línea ${index + 1}.`);
+      const cantidadLinea = Math.max(toNumber(line.cantidad, 1), 1);
+      const precioLinea = toNumber(line.precioUsd, 0);
+      return {
+        tipo: line.estado === 'PAGADO' ? 'INGRESO' : 'CUENTA_POR_COBRAR',
+        estado: line.estado,
+        metodoPago: line.estado === 'PAGADO' ? line.metodoPago : null,
+        concepto: `Servicio adquirido: ${servicio.nombre}`,
+        descripcion: line.descripcion || servicio.descripcion || null,
+        montoUsd: Number((cantidadLinea * precioLinea).toFixed(2)),
+        tasaBcv: line.tasaBcv || undefined,
+        fechaMovimiento: line.fechaMovimiento,
+        fechaVencimiento: line.fechaVencimiento || undefined,
+        clienteId: asignacion.clienteId,
+        categoria: 'Servicio',
+        productoId: null,
+        servicioId: servicio.id,
+        tipoProductoId: null,
+        tipoServicioId: servicio.tipoServicioId || null,
+        referencia: line.referencia || `${selectedCliente?.codigoCliente || 'CLI'}-SERV-${Date.now()}-${index + 1}`,
+        movimientoRelacionadoId: line.movimientoRelacionadoId || null,
+      };
+    });
+
+    const res = await apiFetch('/api/contabilidad/lote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ movimientos }),
+    });
+    return readJson(res, 'No se pudo registrar el lote de servicios.');
   };
 
   const registrarStarlink = async () => {
@@ -456,20 +580,28 @@ export default function CatalogosEnterpriseView({
     event.preventDefault();
     setMensaje('');
     if (!asignacion.clienteId) return setMensaje('Selecciona un cliente registrado.');
-    if (!asignacion.itemId) return setMensaje(`Selecciona un ${singularTitle}.`);
+    if (isProductModule && !asignacion.itemId) return setMensaje(`Selecciona un ${singularTitle}.`);
+    if (!isProductModule && serviceLines.some((line) => !line.itemId)) return setMensaje('Selecciona el servicio en todas las líneas.');
 
     setSaving(true);
     try {
-      await registrarStarlink();
-      await crearMovimientoAdquisicion();
+      if (isProductModule) {
+        await registrarStarlink();
+        await crearMovimientoAdquisicion();
+      } else {
+        await crearLoteServicios();
+      }
       await cargarCatalogos();
       onChanged?.();
       setAsignacion((prev) => ({
         ...emptyAsignacion(),
         tasaBcv: tasaBcvSincronizada || prev.tasaBcv,
       }));
+      setServiceLines([emptyServiceLine(tasaBcvSincronizada)]);
       setTasaEditadaManual(false);
-      setMensaje(isStarlinkSelection
+      setMensaje(!isProductModule
+        ? `${serviceLines.length} servicio${serviceLines.length === 1 ? '' : 's'} registrado${serviceLines.length === 1 ? '' : 's'} en contabilidad.`
+        : isStarlinkSelection
         ? 'Adquisicion registrada con datos Starlink y contabilidad.'
         : 'Adquisicion registrada en contabilidad.');
     } catch (error) {
@@ -550,7 +682,8 @@ export default function CatalogosEnterpriseView({
               )}
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            {isProductModule ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-4 flex flex-col gap-3 border-b border-slate-200 pb-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p className="text-xs font-extrabold uppercase text-teal-700">Detalle comercial</p>
@@ -590,6 +723,14 @@ export default function CatalogosEnterpriseView({
                     <option value="VENCIDO">Vencido</option>
                   </select>
                 </Field>
+                {asignacion.estado === 'PAGADO' && (
+                  <Field label="Método de pago" className="md:col-span-2">
+                    <select value={asignacion.metodoPago} onChange={(event) => updateAsignacion('metodoPago', event.target.value)} className="input">
+                      <option value="TRANSFERENCIA">Transferencia</option>
+                      <option value="EFECTIVO">Efectivo</option>
+                    </select>
+                  </Field>
+                )}
                 <Field label="Fecha" className="md:col-span-2">
                   <input type="date" value={asignacion.fechaMovimiento} onChange={(event) => updateAsignacion('fechaMovimiento', event.target.value)} className="input" />
                 </Field>
@@ -626,7 +767,20 @@ export default function CatalogosEnterpriseView({
                   <textarea value={asignacion.descripcion} onChange={(event) => updateAsignacion('descripcion', event.target.value)} rows={3} className="input min-h-[78px] resize-y" />
                 </Field>
               </div>
-            </div>
+              </div>
+            ) : (
+              <ServiceLinesPanel
+                lines={serviceLines}
+                servicios={servicios}
+                productosCliente={productosCliente}
+                loadingProductosCliente={loadingProductosCliente}
+                updateLine={updateServiceLine}
+                addLine={addServiceLine}
+                removeLine={removeServiceLine}
+                syncRate={syncServiceLineRate}
+                total={totalServicios}
+              />
+            )}
           </section>
 
           {isStarlinkSelection && (
@@ -644,11 +798,13 @@ export default function CatalogosEnterpriseView({
             <div>
               <p className="text-sm font-extrabold text-slate-950">Resumen de registro</p>
               <p className="mt-1 text-xs font-semibold text-slate-600">
-                {selectedCliente?.nombre || 'Sin cliente'} / {selectedItem?.nombre || `Sin ${singularTitle}`} / {formatUsd(totalAsignacion)}
+                {isProductModule
+                  ? `${selectedCliente?.nombre || 'Sin cliente'} / ${selectedItem?.nombre || `Sin ${singularTitle}`} / ${formatUsd(totalAsignacion)}`
+                  : `${selectedCliente?.nombre || 'Sin cliente'} / ${serviceLines.length} servicio${serviceLines.length === 1 ? '' : 's'} / ${formatUsd(totalServicios)}`}
               </p>
             </div>
             <button disabled={saving} className="rounded-lg bg-teal-700 px-5 py-3 text-sm font-extrabold text-white shadow hover:bg-teal-600 disabled:opacity-60 sm:min-w-[180px]">
-              {saving ? 'Guardando...' : 'Registrar venta'}
+              {saving ? 'Guardando...' : isProductModule ? 'Registrar venta' : 'Registrar servicios'}
             </button>
           </div>
         </form>
@@ -660,6 +816,11 @@ export default function CatalogosEnterpriseView({
           search={buscar}
           setSearch={setBuscar}
           onClear={resetForms}
+          order={ordenCatalogo}
+          setOrder={setOrdenCatalogo}
+          direction={direccionOrden}
+          setDirection={setDireccionOrden}
+          nameOrderLabel="Producto"
           form={(
             <CatalogForm onSubmit={saveProducto}>
               <CodeField label="Codigo producto" value={productoForm.codigoProducto} onChange={(value) => setProductoForm((prev) => ({ ...prev, codigoProducto: value }))} onAuto={() => autoCode('producto')} loading={autoCodeLoading === 'producto'} />
@@ -689,6 +850,11 @@ export default function CatalogosEnterpriseView({
           search={buscar}
           setSearch={setBuscar}
           onClear={resetForms}
+          order={ordenCatalogo}
+          setOrder={setOrdenCatalogo}
+          direction={direccionOrden}
+          setDirection={setDireccionOrden}
+          nameOrderLabel="Servicio"
           form={(
             <CatalogForm onSubmit={saveServicio}>
               <CodeField label="Codigo servicio" value={servicioForm.codigoServicio} onChange={(value) => setServicioForm((prev) => ({ ...prev, codigoServicio: value }))} onAuto={() => autoCode('servicio')} loading={autoCodeLoading === 'servicio'} />
@@ -712,6 +878,165 @@ export default function CatalogosEnterpriseView({
         />
       )}
     </section>
+  );
+}
+
+function ServiceLinesPanel({
+  lines,
+  servicios,
+  productosCliente,
+  loadingProductosCliente,
+  updateLine,
+  addLine,
+  removeLine,
+  syncRate,
+  total,
+}) {
+  const productMovementLabel = (movement) => {
+    const product = movement.producto;
+    const productName = product?.nombre || movement.concepto || 'Producto';
+    const code = product?.codigoProducto || 'Sin código';
+    const date = movement.fechaMovimiento ? new Date(movement.fechaMovimiento).toLocaleDateString('es-VE') : 'Sin fecha';
+    return `${code} - ${productName} / ${date}${movement.referencia ? ` / ${movement.referencia}` : ''}`;
+  };
+
+  return (
+    <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-extrabold uppercase text-teal-700">Detalle comercial</p>
+          <h3 className="text-base font-extrabold text-slate-950">Servicios del cliente</h3>
+          <p className="mt-1 text-xs text-slate-500">Cada línea conserva su precio, fechas, pago y producto relacionado.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <MiniSummary label="Servicios" value={String(lines.length)} />
+          <MiniSummary label="Total" value={formatUsd(total)} strong />
+          <button
+            type="button"
+            onClick={addLine}
+            className="h-10 rounded-lg bg-slate-950 px-4 text-sm font-extrabold text-white shadow-sm hover:bg-slate-800"
+          >
+            + Añadir servicio
+          </button>
+        </div>
+      </div>
+
+      <div className="divide-y divide-slate-200">
+        {lines.map((line, index) => {
+          const service = servicios.find((item) => item.id === line.itemId);
+          const lineTotal = Math.max(toNumber(line.cantidad, 1), 1) * toNumber(line.precioUsd, 0);
+          return (
+            <fieldset key={line.id} className="min-w-0 p-4 sm:p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-xs font-extrabold text-white">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
+                  <div className="min-w-0">
+                    <legend className="truncate text-sm font-extrabold text-slate-900">{service?.nombre || `Servicio ${index + 1}`}</legend>
+                    <p className="truncate text-xs text-slate-500">{service?.codigoServicio || 'Selecciona un registro del portafolio'}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeLine(line.id)}
+                  disabled={lines.length === 1}
+                  className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300"
+                >
+                  Eliminar línea
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-6 xl:grid-cols-12">
+                <Field label="Servicio" className="md:col-span-3 xl:col-span-5">
+                  <select value={line.itemId} onChange={(event) => updateLine(line.id, 'itemId', event.target.value)} className="input">
+                    <option value="">Selecciona servicio</option>
+                    {servicios.filter((item) => item.activo).map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.codigoServicio ? `${item.codigoServicio} - ` : ''}{item.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Cantidad" className="md:col-span-1 xl:col-span-2">
+                  <input type="number" min="1" step="1" value={line.cantidad} onChange={(event) => updateLine(line.id, 'cantidad', event.target.value)} className="input" />
+                </Field>
+                <Field label="Precio USD" className="md:col-span-1 xl:col-span-2">
+                  <input type="number" min="0" step="0.01" value={line.precioUsd} onChange={(event) => updateLine(line.id, 'precioUsd', event.target.value)} className="input" />
+                </Field>
+                <Field label="Total" className="md:col-span-1 xl:col-span-3">
+                  <input readOnly value={formatUsd(lineTotal)} className="input bg-slate-100 font-extrabold text-slate-700" />
+                </Field>
+
+                <Field label="Estado" className="md:col-span-2 xl:col-span-2">
+                  <select value={line.estado} onChange={(event) => updateLine(line.id, 'estado', event.target.value)} className="input">
+                    <option value="PAGADO">Pagado</option>
+                    <option value="PENDIENTE">Pendiente</option>
+                    <option value="VENCIDO">Vencido</option>
+                  </select>
+                </Field>
+                {line.estado === 'PAGADO' && (
+                  <Field label="Método de pago" className="md:col-span-2 xl:col-span-2">
+                    <select value={line.metodoPago} onChange={(event) => updateLine(line.id, 'metodoPago', event.target.value)} className="input">
+                      <option value="TRANSFERENCIA">Transferencia</option>
+                      <option value="EFECTIVO">Efectivo</option>
+                    </select>
+                  </Field>
+                )}
+                <Field label="Fecha" className="md:col-span-2 xl:col-span-2">
+                  <input type="date" value={line.fechaMovimiento} onChange={(event) => updateLine(line.id, 'fechaMovimiento', event.target.value)} className="input" />
+                </Field>
+                <Field label="Vencimiento" className="md:col-span-2 xl:col-span-2">
+                  <input type="date" value={line.fechaVencimiento} onChange={(event) => updateLine(line.id, 'fechaVencimiento', event.target.value)} className="input" />
+                </Field>
+                <Field label="Tasa BCV" className="md:col-span-2 xl:col-span-2">
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      readOnly={!line.tasaEditadaManual}
+                      value={line.tasaBcv}
+                      onChange={(event) => updateLine(line.id, 'tasaBcv', event.target.value)}
+                      className={`input min-w-0 ${line.tasaEditadaManual ? '' : 'bg-slate-100 font-bold text-slate-600'}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => (line.tasaEditadaManual ? syncRate(line.id) : updateLine(line.id, 'tasaBcv', line.tasaBcv))}
+                      className="rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                    >
+                      {line.tasaEditadaManual ? 'Sync' : 'Editar'}
+                    </button>
+                  </div>
+                </Field>
+                <Field label="Producto adquirido relacionado" className="md:col-span-4 xl:col-span-4">
+                  <select
+                    value={line.movimientoRelacionadoId}
+                    onChange={(event) => updateLine(line.id, 'movimientoRelacionadoId', event.target.value)}
+                    disabled={loadingProductosCliente}
+                    className="input"
+                  >
+                    <option value="">{loadingProductosCliente ? 'Cargando productos...' : 'Sin producto asociado'}</option>
+                    {productosCliente.map((movement) => (
+                      <option key={movement.id} value={movement.id}>{productMovementLabel(movement)}</option>
+                    ))}
+                  </select>
+                  {!loadingProductosCliente && productosCliente.length === 0 && (
+                    <p className="mt-1 text-[11px] font-medium text-slate-400">El cliente no tiene ventas de producto registradas.</p>
+                  )}
+                </Field>
+                <Field label="Referencia" className="md:col-span-2 xl:col-span-3">
+                  <input value={line.referencia} onChange={(event) => updateLine(line.id, 'referencia', event.target.value)} placeholder="Orden, factura o nota interna" className="input" />
+                </Field>
+                <Field label="Descripción" className="md:col-span-6 xl:col-span-5">
+                  <textarea value={line.descripcion} onChange={(event) => updateLine(line.id, 'descripcion', event.target.value)} rows={2} className="input min-h-[66px] resize-y" />
+                </Field>
+              </div>
+            </fieldset>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -834,7 +1159,19 @@ function StarlinkEnterpriseBlock({
   );
 }
 
-function CatalogManager({ title, search, setSearch, onClear, form, table }) {
+function CatalogManager({
+  title,
+  search,
+  setSearch,
+  onClear,
+  order,
+  setOrder,
+  direction,
+  setDirection,
+  nameOrderLabel,
+  form,
+  table,
+}) {
   return (
     <div className="mt-5 space-y-5">
       <div className="flex flex-col gap-3 rounded-xl border border-teal-100 bg-gradient-to-r from-teal-50 to-slate-50 p-4 md:flex-row md:items-end md:justify-between">
@@ -843,8 +1180,21 @@ function CatalogManager({ title, search, setSearch, onClear, form, table }) {
           <h3 className="text-lg font-extrabold text-slate-950">{title}</h3>
           <p className="text-sm text-slate-500">Crea registros base. El precio y la cantidad se cargan al registrar la venta.</p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(180px,1fr)_minmax(150px,auto)_auto_auto]">
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar..." className="input min-w-[220px]" />
+          <select value={order} onChange={(event) => setOrder(event.target.value)} className="input" aria-label="Ordenar registros">
+            <option value="codigo">Código</option>
+            <option value="nombre">{nameOrderLabel}</option>
+            <option value="estado">Estado</option>
+          </select>
+          <button
+            type="button"
+            onClick={() => setDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
+            title={direction === 'asc' ? 'Orden ascendente' : 'Orden descendente'}
+          >
+            {direction === 'asc' ? 'A-Z' : 'Z-A'}
+          </button>
           <button type="button" onClick={onClear} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100">Limpiar</button>
         </div>
       </div>

@@ -18,6 +18,10 @@ const ESTADOS = [
 ];
 
 const CATEGORIAS = ['Servicio', 'Producto', 'Nomina', 'Pago de factura', 'Suscripcion', 'Otro'];
+const METODOS_PAGO = [
+  { value: 'TRANSFERENCIA', label: 'Transferencia' },
+  { value: 'EFECTIVO', label: 'Efectivo' },
+];
 
 const estadoStyles = {
   PENDIENTE: 'bg-amber-100 text-amber-800',
@@ -46,6 +50,7 @@ const emptyForm = () => ({
   fechaMovimiento: new Date().toISOString().slice(0, 10),
   fechaVencimiento: '',
   estado: 'PAGADO',
+  metodoPago: 'TRANSFERENCIA',
   clienteId: '',
   categoria: '',
   proveedorId: '',
@@ -54,6 +59,7 @@ const emptyForm = () => ({
   tipoProductoId: '',
   tipoServicioId: '',
   referencia: '',
+  movimientoRelacionadoId: '',
 });
 
 const formatUsd = (value) => currency(value || 0, { symbol: '$', separator: '.', decimal: ',' }).format();
@@ -62,7 +68,7 @@ const formatDate = (value) => (value ? new Date(value).toLocaleDateString('es-VE
 const toDateInput = (value) => (value ? new Date(value).toISOString().slice(0, 10) : '');
 const clienteEtiqueta = (cliente) => cliente?.alias || cliente?.nombre || '';
 
-export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActual, apiFetch = fetch }) {
+export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActual, apiFetch = fetch, focusMovementId = '', onFocusHandled }) {
   const [movimientos, setMovimientos] = useState([]);
   const [resumen, setResumen] = useState({});
   const [loading, setLoading] = useState(false);
@@ -76,6 +82,9 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
   const [servicios, setServicios] = useState([]);
   const [tiposProducto, setTiposProducto] = useState([]);
   const [tiposServicio, setTiposServicio] = useState([]);
+  const [grafica, setGrafica] = useState([]);
+  const [mesesGrafica, setMesesGrafica] = useState('12');
+  const [loadingGrafica, setLoadingGrafica] = useState(false);
 
   const montoBsCalculado = useMemo(() => {
     const monto = Number(form.montoUsd || 0);
@@ -106,6 +115,20 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
       setMensaje(error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const cargarGrafica = async () => {
+    setLoadingGrafica(true);
+    try {
+      const res = await apiFetch(`/api/contabilidad/grafica?meses=${mesesGrafica}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo cargar la gráfica.');
+      setGrafica(Array.isArray(data.data) ? data.data : []);
+    } catch (error) {
+      setGrafica([]);
+    } finally {
+      setLoadingGrafica(false);
     }
   };
 
@@ -176,6 +199,10 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
     cargarTasaBcv({ skipConfirm: true });
     cargarCatalogos();
   }, []);
+
+  useEffect(() => {
+    cargarGrafica();
+  }, [mesesGrafica]);
 
   useEffect(() => {
     if (!tasaBcvActual?.tasa || editingId || form.tasaEditadaManual) return;
@@ -270,6 +297,8 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
       servicioId: form.servicioId || null,
       tipoProductoId: form.tipoProductoId || null,
       tipoServicioId: form.tipoServicioId || null,
+      metodoPago: form.estado === 'PAGADO' ? form.metodoPago || null : null,
+      movimientoRelacionadoId: form.movimientoRelacionadoId || null,
     };
 
     try {
@@ -282,6 +311,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
       if (!res.ok) throw new Error(data.details?.join(' ') || data.error || 'No se pudo guardar.');
       resetForm();
       await cargarMovimientos();
+      await cargarGrafica();
       onChanged?.();
       setMensaje(editingId ? 'Movimiento actualizado.' : 'Movimiento creado.');
     } catch (error) {
@@ -303,6 +333,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
       fechaMovimiento: toDateInput(mov.fechaMovimiento),
       fechaVencimiento: toDateInput(mov.fechaVencimiento),
       estado: mov.estado,
+      metodoPago: mov.metodoPago || 'TRANSFERENCIA',
       clienteId: mov.clienteId || '',
       categoria: mov.categoria || '',
       proveedorId: mov.proveedorId || '',
@@ -311,9 +342,27 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
       tipoProductoId: mov.tipoProductoId || '',
       tipoServicioId: mov.tipoServicioId || '',
       referencia: mov.referencia || '',
+      movimientoRelacionadoId: mov.movimientoRelacionadoId || '',
     });
     setTasaMensaje(tasaFuenteLabel[mov.tasaFuente] || (mov.tasaBcv ? 'Tasa guardada en el movimiento.' : ''));
   };
+
+  useEffect(() => {
+    if (!focusMovementId) return;
+    let active = true;
+    apiFetch(`/api/contabilidad/${focusMovementId}`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'No se pudo abrir el movimiento.');
+        if (!active) return;
+        editarMovimiento(data);
+        setMensaje('Movimiento cargado desde el dashboard.');
+        setTimeout(() => document.getElementById('contabilidad-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+      })
+      .catch((error) => active && setMensaje(error.message))
+      .finally(() => active && onFocusHandled?.());
+    return () => { active = false; };
+  }, [focusMovementId]);
 
   const cambiarEstado = async (mov, estado) => {
     try {
@@ -325,6 +374,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'No se pudo actualizar el estado.');
       await cargarMovimientos();
+      await cargarGrafica();
       onChanged?.();
     } catch (error) {
       setMensaje(error.message);
@@ -338,6 +388,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'No se pudo eliminar.');
       await cargarMovimientos();
+      await cargarGrafica();
       onChanged?.();
     } catch (error) {
       setMensaje(error.message);
@@ -362,10 +413,28 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
         <Metric title="Por pagar" value={formatUsd(resumen.pendientePorPagar)} tone="slate" />
       </section>
 
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-5 flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-extrabold uppercase text-teal-700">Comportamiento financiero</p>
+            <h3 className="font-extrabold text-slate-950">Comparativo mensual</h3>
+            <p className="text-sm text-slate-500">Ingresos, egresos y cuentas pendientes por mes.</p>
+          </div>
+          <Field label="Período visible">
+            <select value={mesesGrafica} onChange={(event) => setMesesGrafica(event.target.value)} className="input min-w-[170px]">
+              <option value="6">Últimos 6 meses</option>
+              <option value="12">Últimos 12 meses</option>
+              <option value="24">Últimos 24 meses</option>
+            </select>
+          </Field>
+        </div>
+        <AccountingBarChart data={grafica} loading={loadingGrafica} />
+      </section>
+
       {mensaje && <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm font-medium text-slate-700 shadow-sm">{mensaje}</div>}
 
       <section className="grid min-w-0 grid-cols-1 gap-6 2xl:grid-cols-[minmax(360px,420px)_minmax(0,1fr)]">
-        <form onSubmit={guardarMovimiento} className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <form id="contabilidad-form" onSubmit={guardarMovimiento} className="min-w-0 scroll-mt-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="font-bold text-slate-950">{editingId ? 'Editar movimiento' : 'Crear movimiento'}</h3>
             {editingId && <button type="button" onClick={resetForm} className="text-xs font-bold text-slate-500 hover:text-slate-900">Cancelar</button>}
@@ -382,6 +451,13 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
                 {ESTADOS.map((estado) => <option key={estado.value} value={estado.value}>{estado.label}</option>)}
               </select>
             </Field>
+            {form.estado === 'PAGADO' && (
+              <Field label="Método de pago" className="sm:col-span-2">
+                <select value={form.metodoPago} onChange={(e) => updateForm('metodoPago', e.target.value)} className="input">
+                  {METODOS_PAGO.map((metodo) => <option key={metodo.value} value={metodo.value}>{metodo.label}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="Concepto" className="sm:col-span-2">
               <input required value={form.concepto} onChange={(e) => updateForm('concepto', e.target.value)} className="input" />
             </Field>
@@ -515,8 +591,9 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
                     <td className="p-3 text-slate-500">{formatDate(mov.fechaMovimiento)}</td>
                     <td className="p-3">
                       <p className="font-bold text-slate-950">{mov.concepto}</p>
-                      <p className="text-xs text-slate-500">{TIPOS.find((t) => t.value === mov.tipo)?.label || mov.tipo}{mov.categoria ? ` · ${mov.categoria}` : ''}</p>
-                      {(mov.producto || mov.servicio) && <p className="text-xs font-semibold text-indigo-600">{mov.producto?.nombre || mov.servicio?.nombre}</p>}
+                       <p className="text-xs text-slate-500">{TIPOS.find((t) => t.value === mov.tipo)?.label || mov.tipo}{mov.categoria ? ` · ${mov.categoria}` : ''}</p>
+                       {mov.metodoPago && <p className="text-xs font-semibold text-teal-700">{METODOS_PAGO.find((item) => item.value === mov.metodoPago)?.label || mov.metodoPago}</p>}
+                       {(mov.producto || mov.servicio) && <p className="text-xs font-semibold text-indigo-600">{mov.producto?.nombre || mov.servicio?.nombre}</p>}
                     </td>
                     <td className="p-3 text-slate-600">{clienteEtiqueta(mov.cliente) || mov.referencia || mov.producto?.nombre || mov.servicio?.nombre || '-'}</td>
                     <td className="p-3 whitespace-nowrap"><span className={`rounded-full px-2 py-1 text-xs font-bold ${estadoStyles[mov.estado] || 'bg-slate-100 text-slate-700'}`}>{mov.estado}</span></td>
@@ -527,7 +604,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
                     <td className="p-3">
                       <div className="flex justify-end gap-2 whitespace-nowrap">
                         <button type="button" onClick={() => editarMovimiento(mov)} className="text-xs font-bold text-blue-600">Editar</button>
-                        {mov.estado !== 'PAGADO' && <button type="button" onClick={() => cambiarEstado(mov, 'PAGADO')} className="text-xs font-bold text-emerald-600">Pagar</button>}
+                        {mov.estado !== 'PAGADO' && <button type="button" onClick={() => editarMovimiento({ ...mov, estado: 'PAGADO', metodoPago: mov.metodoPago || 'TRANSFERENCIA' })} className="text-xs font-bold text-emerald-600">Registrar pago</button>}
                         {mov.estado !== 'ANULADO' && <button type="button" onClick={() => cambiarEstado(mov, 'ANULADO')} className="text-xs font-bold text-slate-500">Anular</button>}
                         <button type="button" onClick={() => eliminarMovimiento(mov)} className="text-xs font-bold text-red-600">Eliminar</button>
                       </div>
@@ -539,6 +616,48 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
           </div>
         </section>
       </section>
+    </div>
+  );
+}
+
+function AccountingBarChart({ data = [], loading = false }) {
+  if (loading) return <div className="grid h-56 place-items-center text-sm font-semibold text-slate-500">Cargando gráfica...</div>;
+  if (!data.length) return <div className="grid h-56 place-items-center rounded-lg border border-dashed border-slate-200 text-sm text-slate-500">Sin movimientos para graficar.</div>;
+
+  const series = [
+    { key: 'ingresos', label: 'Ingresos', color: 'bg-emerald-500' },
+    { key: 'egresos', label: 'Egresos', color: 'bg-red-500' },
+    { key: 'porCobrar', label: 'Por cobrar', color: 'bg-amber-500' },
+    { key: 'porPagar', label: 'Por pagar', color: 'bg-slate-500' },
+  ];
+  const max = Math.max(...data.flatMap((item) => series.map((serie) => Number(item[serie.key] || 0))), 1);
+  const monthLabel = (value) => new Date(`${value}-01T00:00:00Z`).toLocaleDateString('es-VE', { month: 'short', year: '2-digit', timeZone: 'UTC' });
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-xs font-semibold text-slate-600">
+        {series.map((serie) => <span key={serie.key} className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-sm ${serie.color}`} />{serie.label}</span>)}
+      </div>
+      <div className="overflow-x-auto pb-2">
+        <div className="flex h-64 min-w-[720px] items-end gap-4 border-b border-slate-200 px-2">
+          {data.map((item) => (
+            <div key={item.mes} className="flex h-full min-w-[58px] flex-1 flex-col justify-end">
+              <div className="flex h-[205px] items-end justify-center gap-1 border-b border-slate-100">
+                {series.map((serie) => {
+                  const value = Number(item[serie.key] || 0);
+                  const height = value > 0 ? Math.max(5, Math.round((value / max) * 190)) : 2;
+                  return (
+                    <div key={serie.key} className="group relative flex h-full flex-1 items-end justify-center">
+                      <div title={`${serie.label}: ${formatUsd(value)}`} className={`w-full max-w-4 rounded-t ${value > 0 ? serie.color : 'bg-slate-100'}`} style={{ height }} />
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="py-2 text-center text-[11px] font-bold capitalize text-slate-500">{monthLabel(item.mes)}</p>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

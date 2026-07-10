@@ -31,7 +31,7 @@ const DEFAULT_PDF_DATA = {
   empresaDireccion: 'Carretera Vieja Caracas - Baruta, Torre Gamma, Piso 9, Apto 9-B, Residencia Los Alpes, Caracas - Venezuela.',
   empresaTelefono: 'Telefono: +584142087167',
   empresaWeb: 'www.serviciostamika.com',
-  proyecto: 'Implementación de servicios tecnológicos y soporte especializado',
+  proyecto: '',
   saludo: DEFAULT_SALUDO,
 };
 
@@ -44,6 +44,15 @@ const DOCUMENTO_OPTIONS = [
 ];
 const ESTADO_DOCUMENTO_OPTIONS = ['BORRADOR', 'APROBADO', 'CONVERTIDO', 'FACTURADO', 'ANULADO'];
 const documentoLabel = (tipoDocumento) => (tipoDocumento === 'PRESUPUESTO' ? 'Presupuesto' : 'Propuesta');
+const buildAsociacionCotizacion = (overrides = {}) => ({
+  _key: overrides.id || `${Date.now()}-${Math.random()}`,
+  id: overrides.id || '',
+  tipo: overrides.tipo || 'SERVICIO',
+  productoId: overrides.productoId || '',
+  servicioId: overrides.servicioId || '',
+  cantidad: overrides.cantidad?.toString() || '1',
+  precioUsd: overrides.precioUsd === null || overrides.precioUsd === undefined ? '' : overrides.precioUsd.toString(),
+});
 const saludoParaCliente = (nombreCliente = '') => {
   const nombre = String(nombreCliente || '').trim();
   return nombre ? `${DEFAULT_SALUDO} ${nombre}` : DEFAULT_SALUDO;
@@ -129,6 +138,8 @@ export default function TamikaERP() {
   const [defCom, setDefCom] = useState('0');
   const [defRel, setDefRel] = useState('1');
   const [itemsCoti, setItemsCoti] = useState([]);
+  const [asociacionesCoti, setAsociacionesCoti] = useState([]);
+  const [contabilidadFocusId, setContabilidadFocusId] = useState('');
 
   const [nuevoNombre, setNuevoNombre] = useState('');
   const [nuevoCodigoCliente, setNuevoCodigoCliente] = useState('');
@@ -225,6 +236,13 @@ export default function TamikaERP() {
     setTipoDocumento(value);
     setPlantillaSeleccionadaId('');
     cargarSiguienteCorrelativo(value);
+  };
+
+  const handleEstadoDocumentoChange = (value) => {
+    setEstadoDocumento(value);
+    if (value === 'APROBADO' && asociacionesCoti.length === 0) {
+      setAsociacionesCoti([buildAsociacionCotizacion()]);
+    }
   };
 
   const handleClienteChange = (clienteId) => {
@@ -383,6 +401,11 @@ export default function TamikaERP() {
     setActiveView('starlink');
   };
 
+  const abrirMovimientoContable = (movimientoId) => {
+    setContabilidadFocusId(movimientoId);
+    setActiveView('contabilidad');
+  };
+
   const cargarDatos = () => {
     apiFetch('/api/clientes').then(res => res.json()).then(data => setClientes(Array.isArray(data) ? data : []));
     apiFetch('/api/productos').then(res => res.json()).then(data => setProductos(Array.isArray(data) ? data : [])).catch(() => setProductos([]));
@@ -447,6 +470,7 @@ export default function TamikaERP() {
     setDatosPdf(DEFAULT_PDF_DATA);
     setSaludoEditadoManual(false);
     setItemsCoti([]);
+    setAsociacionesCoti([]);
     cargarSiguienteCorrelativo('PROPUESTA');
   };
   const costoDesdePrecio = (precio, item = {}) => {
@@ -483,6 +507,31 @@ export default function TamikaERP() {
     }));
   };
   const eliminarItem = (id) => setItemsCoti(itemsCoti.filter(item => item.id !== id));
+  const agregarAsociacionCoti = () => setAsociacionesCoti((prev) => [...prev, buildAsociacionCotizacion()]);
+  const actualizarAsociacionCoti = (key, field, value) => {
+    setAsociacionesCoti((prev) => prev.map((asociacion) => {
+      if (asociacion._key !== key) return asociacion;
+      if (field === 'tipo') {
+        return { ...asociacion, tipo: value, productoId: '', servicioId: '', precioUsd: '' };
+      }
+      if (field === 'catalogoId') {
+        const source = value
+          ? (asociacion.tipo === 'PRODUCTO' ? productos : servicios).find((item) => item.id === value)
+          : null;
+        return {
+          ...asociacion,
+          productoId: asociacion.tipo === 'PRODUCTO' ? value : '',
+          servicioId: asociacion.tipo === 'SERVICIO' ? value : '',
+          precioUsd: source?.precioUsd ? source.precioUsd.toString() : asociacion.precioUsd,
+        };
+      }
+      return { ...asociacion, [field]: value };
+    }));
+  };
+  const eliminarAsociacionCoti = (key) => setAsociacionesCoti((prev) => prev.filter((asociacion) => asociacion._key !== key));
+  const totalAsociacionesCoti = () => asociacionesCoti.reduce((total, asociacion) => (
+    total + (parseVe(asociacion.cantidad) * parseVe(asociacion.precioUsd))
+  ), 0);
   const getPUnitario = (item) => { if (advMode) return (parseVe(item.costo) * (1 + parseVe(item.gan))) / ((parseVe(item.rel)||1) * (1 - parseVe(item.ret)) * (1 - parseVe(item.com))); return parseVe(item.unitarioManual); };
   const calcularSubtotal = () => itemsCoti.reduce((acc, item) => acc + (getPUnitario(item) * parseVe(item.cant)), 0);
   const calcularIva = () => calcularSubtotal() * 0.16;
@@ -553,6 +602,15 @@ export default function TamikaERP() {
       iva: calcularIva(),
       total: calcularTotal(),
       items: itemsCoti,
+      asociaciones: asociacionesCoti.filter((asociacion) => (
+        asociacion.tipo === 'PRODUCTO' ? asociacion.productoId : asociacion.servicioId
+      )).map((asociacion) => ({
+        tipo: asociacion.tipo,
+        productoId: asociacion.tipo === 'PRODUCTO' ? asociacion.productoId || null : null,
+        servicioId: asociacion.tipo === 'SERVICIO' ? asociacion.servicioId || null : null,
+        cantidad: parseVe(asociacion.cantidad),
+        precioUsd: asociacion.precioUsd === '' ? null : parseVe(asociacion.precioUsd),
+      })),
     };
     const res = await apiFetch(cotiEditandoId ? `/api/propuestas/${cotiEditandoId}` : '/api/propuestas', { method: cotiEditandoId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await res.json().catch(() => null);
@@ -561,6 +619,7 @@ export default function TamikaERP() {
     setNroCoti(data.numero || nroCoti);
     setTipoDocumento(data.tipoDocumento || tipoDocumento);
     setEstadoDocumento(data.estado || estadoDocumento);
+    setAsociacionesCoti(Array.isArray(data.asociaciones) ? data.asociaciones.map(buildAsociacionCotizacion) : asociacionesCoti);
     alert(cotiEditandoId ? "Actualizada exitosamente." : "Guardada exitosamente.");
     cargarDatos();
   };
@@ -580,6 +639,7 @@ export default function TamikaERP() {
     setDatosPdf(datosPdfCargados);
     setSaludoEditadoManual(!saludoEsAutomatico(datosPdfCargados));
     setItemsCoti(Array.isArray(coti.items) ? coti.items : []);
+    setAsociacionesCoti(Array.isArray(coti.asociaciones) ? coti.asociaciones.map(buildAsociacionCotizacion) : []);
     setShowModal(false);
   };
 
@@ -747,11 +807,16 @@ export default function TamikaERP() {
         pageMargins: [40, 115, 40, 40],
         defaultStyle: { font: 'Roboto', color: '#1e293b' },
         background: function(currentPage, pageSize) {
-          return {
-            canvas: [
-              { type: 'rect', x: 0, y: 0, w: pageSize.width, h: pageSize.height, color: '#ffffff' },
-            ],
-          };
+          return [
+            {
+              canvas: [
+                { type: 'rect', x: 0, y: 0, w: pageSize.width, h: pageSize.height, color: '#ffffff' },
+              ],
+            },
+            logoBase64
+              ? { image: logoBase64, width: 280, opacity: 0.045, absolutePosition: { x: (pageSize.width - 280) / 2, y: 285 } }
+              : { text: '' },
+          ];
         },
         info: {
           title: `${nombreDocumento} ${numeroVisualPdf}`,
@@ -1049,11 +1114,19 @@ export default function TamikaERP() {
             tasasActuales={tasasActuales}
             starlinkAlertas={starlinkAlertas}
             onOpenStarlink={() => setActiveView('starlink')}
+            onOpenMovimiento={abrirMovimientoContable}
           />
         )}
 
         {activeView === 'contabilidad' && (
-          <ContabilidadView clientes={clientes} onChanged={cargarDatos} tasaBcvActual={tasaBcvActual} apiFetch={apiFetch} />
+          <ContabilidadView
+            clientes={clientes}
+            onChanged={cargarDatos}
+            tasaBcvActual={tasaBcvActual}
+            apiFetch={apiFetch}
+            focusMovementId={contabilidadFocusId}
+            onFocusHandled={() => setContabilidadFocusId('')}
+          />
         )}
 
         {activeView === 'reportes' && (
@@ -1157,7 +1230,7 @@ export default function TamikaERP() {
                 </div>
                 <div className="lg:col-span-2">
                   <label className="text-xs text-slate-500 font-bold uppercase">Estado</label>
-                  <select value={estadoDocumento} onChange={(e)=>setEstadoDocumento(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
+                  <select value={estadoDocumento} onChange={(e)=>handleEstadoDocumentoChange(e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-500">
                     {ESTADO_DOCUMENTO_OPTIONS.map(estado => <option key={estado} value={estado}>{estado}</option>)}
                   </select>
                 </div>
@@ -1220,9 +1293,74 @@ export default function TamikaERP() {
                    <div><label className="block text-xs font-bold text-indigo-700">Relación</label><input type="text" value={defRel} onChange={(e)=>handleGlobalChange('defRel', 'rel', e.target.value)} className="w-full border rounded px-3 py-2 bg-white" /></div>
                  </div>
                )}
-             </div>
+              </div>
 
-             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              {estadoDocumento === 'APROBADO' && (
+                <section className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+                  <div className="flex flex-col gap-3 border-b border-emerald-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-extrabold uppercase text-emerald-700">Documento aprobado</p>
+                      <h3 className="font-extrabold text-slate-950">Productos y servicios asociados</h3>
+                      <p className="text-sm text-slate-600">Vincula el catálogo entregado sin alterar los montos históricos del documento.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-800">
+                        {asociacionesCoti.length} registros · {formatUsd(totalAsociacionesCoti())}
+                      </span>
+                      <button type="button" onClick={agregarAsociacionCoti} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-extrabold text-white hover:bg-emerald-600">
+                        + Asociar registro
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="divide-y divide-emerald-100">
+                    {asociacionesCoti.map((asociacion, index) => {
+                      const opciones = asociacion.tipo === 'PRODUCTO' ? productos : servicios;
+                      const catalogoId = asociacion.tipo === 'PRODUCTO' ? asociacion.productoId : asociacion.servicioId;
+                      return (
+                        <div key={asociacion._key} className="grid grid-cols-1 gap-3 py-4 md:grid-cols-12 md:items-end">
+                          <label className="text-xs font-bold text-slate-600 md:col-span-2">
+                            <span className="mb-1 block">Tipo</span>
+                            <select value={asociacion.tipo} onChange={(e) => actualizarAsociacionCoti(asociacion._key, 'tipo', e.target.value)} className="input">
+                              <option value="SERVICIO">Servicio</option>
+                              <option value="PRODUCTO">Producto</option>
+                            </select>
+                          </label>
+                          <label className="text-xs font-bold text-slate-600 md:col-span-4">
+                            <span className="mb-1 block">Registro asociado</span>
+                            <select value={catalogoId} onChange={(e) => actualizarAsociacionCoti(asociacion._key, 'catalogoId', e.target.value)} className="input">
+                              <option value="">Selecciona {asociacion.tipo === 'PRODUCTO' ? 'producto' : 'servicio'}</option>
+                              {opciones.filter((item) => item.activo).map((item) => (
+                                <option key={item.id} value={item.id}>{item.codigoProducto || item.codigoServicio || '-'} · {item.nombre}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="text-xs font-bold text-slate-600 md:col-span-2">
+                            <span className="mb-1 block">Cantidad</span>
+                            <input type="number" min="0.01" step="0.01" value={asociacion.cantidad} onChange={(e) => actualizarAsociacionCoti(asociacion._key, 'cantidad', e.target.value)} className="input" />
+                          </label>
+                          <label className="text-xs font-bold text-slate-600 md:col-span-2">
+                            <span className="mb-1 block">Precio USD</span>
+                            <input type="number" min="0" step="0.01" value={asociacion.precioUsd} onChange={(e) => actualizarAsociacionCoti(asociacion._key, 'precioUsd', e.target.value)} className="input" />
+                          </label>
+                          <div className="flex items-center justify-between gap-2 md:col-span-2">
+                            <div>
+                              <p className="text-[10px] font-bold uppercase text-slate-500">Subtotal</p>
+                              <p className="text-sm font-extrabold text-slate-900">{formatUsd(parseVe(asociacion.cantidad) * parseVe(asociacion.precioUsd))}</p>
+                            </div>
+                            <button type="button" title={`Eliminar asociación ${index + 1}`} onClick={() => eliminarAsociacionCoti(asociacion._key)} className="grid h-9 w-9 place-items-center rounded-lg border border-red-200 bg-white text-lg font-bold text-red-600 hover:bg-red-50">×</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {!asociacionesCoti.length && (
+                      <p className="py-5 text-sm text-slate-500">Todavía no hay productos o servicios asociados.</p>
+                    )}
+                  </div>
+                </section>
+              )}
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                <h3 className="text-xs font-bold uppercase text-slate-500">Datos comerciales del PDF</h3>
                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                  <div className="md:col-span-2 xl:col-span-4">

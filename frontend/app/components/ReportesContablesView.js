@@ -8,6 +8,7 @@ const formatBs = (value) => (value || value === 0 ? currency(value, { symbol: 'B
 const formatDate = (value) => (value ? new Date(value).toLocaleDateString('es-VE', { timeZone: 'UTC' }) : '-');
 const formatDateTime = (value) => (value ? new Date(value).toLocaleString('es-VE') : '-');
 const clienteEtiqueta = (cliente) => cliente?.alias || cliente?.nombre || '';
+const formatMonth = (value) => (value ? new Date(`${value}-01T00:00:00Z`).toLocaleDateString('es-VE', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '-');
 
 const sectionConfig = [
   { key: 'ingresos', title: 'Ingresos', label: 'Ingresos reales', tone: 'emerald' },
@@ -66,11 +67,12 @@ const filterValue = (filters, clientes, field) => {
 };
 
 export default function ReportesContablesView({ clientes = [], apiFetch }) {
-  const [filters, setFilters] = useState({ desde: '', hasta: '', tipo: '', estado: '', clienteId: '', buscar: '' });
+  const [filters, setFilters] = useState({ desde: '', hasta: '', tipo: '', estado: '', clienteId: '', buscar: '', mesesComparativo: '12' });
   const [reporte, setReporte] = useState(null);
   const [loading, setLoading] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [incluirGraficaPdf, setIncluirGraficaPdf] = useState(true);
 
   const cargarReporte = async () => {
     setLoading(true);
@@ -104,6 +106,7 @@ export default function ReportesContablesView({ clientes = [], apiFetch }) {
     ...config,
     ...(reporte?.secciones?.[config.key] || { items: [], subtotalUsd: 0, subtotalBs: 0 }),
   })), [reporte]);
+  const comparativoMensual = Array.isArray(reporte?.comparativoMensual) ? reporte.comparativoMensual : [];
 
   const generarPdf = async (accion = 'abrir') => {
     const data = reporte || await cargarReporte();
@@ -179,6 +182,42 @@ export default function ReportesContablesView({ clientes = [], apiFetch }) {
           },
         ];
       });
+      const comparativoPdf = Array.isArray(data?.comparativoMensual) ? data.comparativoMensual : [];
+      const maxComparativoPdf = Math.max(...comparativoPdf.flatMap((item) => [item.ingresos, item.egresos].map((value) => Number(value || 0))), 1);
+      const buildPdfBar = (value, color) => ({
+        canvas: [
+          { type: 'rect', x: 0, y: 1, w: 210, h: 8, color: '#e2e8f0', r: 2 },
+          { type: 'rect', x: 0, y: 1, w: Math.max(Number(value || 0) > 0 ? 4 : 0, (Number(value || 0) / maxComparativoPdf) * 210), h: 8, color, r: 2 },
+        ],
+        margin: [0, 2, 0, 0],
+      });
+      const graficaPdfBlocks = incluirGraficaPdf && comparativoPdf.length ? [
+        { text: 'Comparativo mensual', bold: true, fontSize: 12, color: '#0f172a', margin: [0, 14, 0, 3] },
+        { text: 'Ingresos y egresos reales del período seleccionado.', fontSize: 8, color: '#64748b', margin: [0, 0, 0, 8] },
+        {
+          table: {
+            widths: [54, 38, 210, 60, 38, 210, 60],
+            body: comparativoPdf.map((item) => ([
+              { text: formatMonth(item.mes), fontSize: 7, bold: true, color: '#334155', margin: [0, 2, 0, 0] },
+              { text: 'Ing.', fontSize: 6.5, color: '#047857', margin: [0, 2, 0, 0] },
+              buildPdfBar(item.ingresos, '#10b981'),
+              { text: formatUsd(item.ingresos), fontSize: 7, bold: true, alignment: 'right', margin: [0, 2, 0, 0] },
+              { text: 'Egr.', fontSize: 6.5, color: '#b91c1c', margin: [0, 2, 0, 0] },
+              buildPdfBar(item.egresos, '#ef4444'),
+              { text: formatUsd(item.egresos), fontSize: 7, bold: true, alignment: 'right', margin: [0, 2, 0, 0] },
+            ])),
+          },
+          layout: {
+            hLineWidth: () => 0,
+            vLineWidth: () => 0,
+            paddingLeft: () => 2,
+            paddingRight: () => 2,
+            paddingTop: () => 1,
+            paddingBottom: () => 1,
+          },
+          margin: [0, 0, 0, 10],
+        },
+      ] : [];
 
       const docDefinition = {
         pageSize: 'A4',
@@ -226,8 +265,8 @@ export default function ReportesContablesView({ clientes = [], apiFetch }) {
                 [
                   filterCell('Cliente', filterValue(filters, clientes, 'clienteId')),
                   filterCell('Búsqueda', filters.buscar || 'Sin búsqueda'),
-                  filterCell('Moneda', 'USD / Bs'),
-                  filterCell('Módulo', 'Contabilidad'),
+                  filterCell('Comparativo', `${filters.mesesComparativo} meses`),
+                  filterCell('Gráfica PDF', incluirGraficaPdf ? 'Incluida' : 'No incluida'),
                 ],
               ],
             },
@@ -246,6 +285,7 @@ export default function ReportesContablesView({ clientes = [], apiFetch }) {
             layout: 'noBorders',
             margin: [0, 0, 0, 8],
           },
+          ...graficaPdfBlocks,
           ...sectionBlocks,
         ],
       };
@@ -301,6 +341,15 @@ export default function ReportesContablesView({ clientes = [], apiFetch }) {
             {clientes.map((cliente) => <option key={cliente.id} value={cliente.id}>{cliente.codigoCliente ? `${cliente.codigoCliente} - ` : ''}{cliente.nombre}</option>)}
           </select></Field>
           <Field label="Búsqueda"><input placeholder="Concepto, referencia..." value={filters.buscar} onChange={(e) => updateFilter('buscar', e.target.value)} className="input" /></Field>
+          <Field label="Comparativo mensual"><select value={filters.mesesComparativo} onChange={(e) => updateFilter('mesesComparativo', e.target.value)} className="input">
+            <option value="6">Últimos 6 meses</option>
+            <option value="12">Últimos 12 meses</option>
+            <option value="24">Últimos 24 meses</option>
+          </select></Field>
+          <label className="flex min-h-[42px] items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">
+            <input type="checkbox" checked={incluirGraficaPdf} onChange={(event) => setIncluirGraficaPdf(event.target.checked)} className="h-4 w-4 accent-emerald-600" />
+            Incluir gráfica en PDF
+          </label>
           <div className="flex items-end">
             <button className="w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">Filtrar</button>
           </div>
@@ -317,6 +366,8 @@ export default function ReportesContablesView({ clientes = [], apiFetch }) {
         <Metric title="Balance general" value={formatUsd(reporte?.resumen?.balance)} tone="slate" />
       </div>
 
+      <MonthlyComparisonChart data={comparativoMensual} />
+
       <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         {sections.map((section) => (
           <SectionTile key={section.key} title={section.label} value={formatUsd(section.subtotalUsd)} count={section.items.length} tone={section.tone} />
@@ -327,6 +378,51 @@ export default function ReportesContablesView({ clientes = [], apiFetch }) {
         <ReportSection key={section.key} section={section} />
       ))}
     </div>
+  );
+}
+
+function MonthlyComparisonChart({ data = [] }) {
+  const max = Math.max(...data.flatMap((item) => [item.ingresos, item.egresos].map((value) => Number(value || 0))), 1);
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-5 flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-extrabold uppercase text-indigo-700">Análisis de tendencia</p>
+          <h3 className="font-extrabold text-slate-950">Comparativo mes a mes</h3>
+          <p className="text-sm text-slate-500">Ingresos y egresos reales según los filtros aplicados.</p>
+        </div>
+        <div className="flex gap-4 text-xs font-semibold text-slate-600">
+          <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" />Ingresos</span>
+          <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-sm bg-red-500" />Egresos</span>
+        </div>
+      </div>
+      {!data.length && <div className="grid h-56 place-items-center rounded-lg border border-dashed border-slate-200 text-sm text-slate-500">Sin datos mensuales para comparar.</div>}
+      {!!data.length && (
+        <div className="overflow-x-auto pb-2">
+          <div className="flex h-64 min-w-[720px] items-end gap-4 border-b border-slate-200 px-2">
+            {data.map((item) => (
+              <div key={item.mes} className="flex h-full min-w-[58px] flex-1 flex-col justify-end">
+                <div className="flex h-[200px] items-end justify-center gap-2 border-b border-slate-100">
+                  {[
+                    { key: 'ingresos', color: 'bg-emerald-500', label: 'Ingresos' },
+                    { key: 'egresos', color: 'bg-red-500', label: 'Egresos' },
+                  ].map((serie) => {
+                    const value = Number(item[serie.key] || 0);
+                    const height = value > 0 ? Math.max(5, Math.round((value / max) * 185)) : 2;
+                    return <div key={serie.key} title={`${serie.label}: ${formatUsd(value)}`} className={`w-5 rounded-t ${value > 0 ? serie.color : 'bg-slate-100'}`} style={{ height }} />;
+                  })}
+                </div>
+                <div className="py-2 text-center">
+                  <p className="text-[11px] font-bold capitalize text-slate-500">{formatMonth(item.mes)}</p>
+                  <p className={`text-[10px] font-extrabold ${Number(item.balance || 0) >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{formatUsd(item.balance)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

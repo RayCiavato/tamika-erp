@@ -629,36 +629,19 @@ export default function TamikaERP() {
       const c = clientes.find(x => x.id === clienteSelect);
       const d = new Date();
       const nombreDocumento = documentoLabel(tipoDocumento);
+      const nombreDocumentoPdf = nombreDocumento.toUpperCase();
       const dateStr = ('0'+d.getDate()).slice(-2) + ('0'+(d.getMonth()+1)).slice(-2) + d.getFullYear();
       const aliasStr = c?.alias ? `_${c.alias}` : '';
       const cleanTitle = `${nombreDocumento}_${nroCoti || 'sin_correlativo'}${aliasStr}_${dateStr}.pdf`.replace(/\s+/g, '_');
-      const numeroVisual = nroCoti?.toString().match(/(\d+)$/)?.[1];
-      const numeroVisualPdf = numeroVisual ? numeroVisual.padStart(7, '0') : (nroCoti || 'Pendiente');
-      const etiquetaNumeroPdf = tipoDocumento === 'PRESUPUESTO' ? `PRESUPUESTO NO. ${numeroVisualPdf}` : `COTIZACIÓN NO. ${numeroVisualPdf}`;
+      const numeroVisualPdf = String(nroCoti || 'Pendiente').trim();
       const datosPdfActual = datosPdfDesdeCliente(c, datosPdf);
-      const sidebarCliente = [
-        datosPdfActual.clienteCodigo,
-        datosPdfActual.clienteNombre,
-        datosPdfActual.clienteRif,
-        datosPdfActual.clienteDireccion,
-        datosPdfActual.clienteTelefono,
-        datosPdfActual.clienteEmail,
-      ].filter(Boolean);
-      const sidebarEmpresa = [
-        datosPdfActual.empresaNombre,
-        datosPdfActual.empresaRif,
-        datosPdfActual.empresaDireccion,
-        datosPdfActual.empresaTelefono,
-        datosPdfActual.empresaWeb,
-      ].filter(Boolean);
 
       const tableBody = [
         [
-          { text: 'ITEM', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, alignment: 'center', margin: [2, 5], noWrap: true, border: [false, false, false, false] },
-          { text: 'DESCRIPCIÓN DEL SERVICIO', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, margin: [4, 5], border: [false, false, false, false] },
-          { text: 'CANT.', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, alignment: 'center', margin: [4, 5], border: [false, false, false, false] },
-          { text: 'PRECIO UNID.', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, alignment: 'right', margin: [4, 5], border: [false, false, false, false] },
-          { text: 'TOTAL USD', fillColor: '#1e293b', color: 'white', bold: true, fontSize: 7.5, alignment: 'right', margin: [4, 5], border: [false, false, false, false] }
+          { text: 'DESCRIPCIÓN', fillColor: '#1e293b', color: '#ffffff', bold: true, fontSize: 9, margin: [4, 7], border: [false, false, false, false] },
+          { text: 'CANT.', fillColor: '#1e293b', color: '#ffffff', bold: true, fontSize: 9, alignment: 'center', margin: [4, 7], border: [false, false, false, false] },
+          { text: 'PRECIO UNID.', fillColor: '#1e293b', color: '#ffffff', bold: true, fontSize: 9, alignment: 'right', margin: [4, 7], border: [false, false, false, false] },
+          { text: 'TOTAL USD', fillColor: '#1e293b', color: '#ffffff', bold: true, fontSize: 9, alignment: 'right', margin: [4, 7], border: [false, false, false, false] }
         ]
       ];
 
@@ -666,27 +649,35 @@ export default function TamikaERP() {
         const pUnit = getPUnitario(item);
         const bg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
         tableBody.push([
-          { text: String(idx + 1).padStart(2, '0'), fontSize: 7.5, color: '#1e293b', alignment: 'center', margin: [4, 5], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] },
-          { text: item.desc || ' ', fontSize: 7.5, color: '#1e293b', margin: [4, 5], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] },
-          { text: item.cant ? item.cant.toString() : '0', fontSize: 7.5, color: '#1e293b', alignment: 'center', margin: [4, 5], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] },
-          { text: formatUsd(pUnit), fontSize: 7.5, color: '#1e293b', alignment: 'right', margin: [4, 5], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] },
-          { text: formatUsd(pUnit * parseVe(item.cant)), fontSize: 7.5, bold: true, color: '#0f172a', alignment: 'right', margin: [4, 5], fillColor: bg, border: [false, false, false, true], borderColor: ['#e2e8f0', '#e2e8f0', '#e2e8f0', '#e2e8f0'] }
+          { text: item.desc || ' ', fontSize: 9, color: '#1e293b', margin: [4, 8], fillColor: bg, border: [false, false, false, false] },
+          { text: item.cant ? item.cant.toString() : '0', fontSize: 9, color: '#1e293b', alignment: 'center', margin: [4, 8], fillColor: bg, border: [false, false, false, false] },
+          { text: formatUsd(pUnit), fontSize: 9, color: '#1e293b', alignment: 'right', margin: [4, 8], fillColor: bg, border: [false, false, false, false] },
+          { text: formatUsd(pUnit * parseVe(item.cant)), fontSize: 9, bold: true, color: '#0f172a', alignment: 'right', margin: [4, 8], fillColor: bg, border: [false, false, false, false] }
         ]);
       });
 
       const terminosFormateados = htmlToPdfmake(condiciones, {
         window: window,
-        defaultStyles: { p: { fontSize: 6.4, color: '#475569', margin: [0, 0, 0, 3], alignment: 'justify', lineHeight: 1.04 }, strong: { bold: true, color: '#0f172a' } }
+        defaultStyles: {
+          p: { fontSize: 8, color: '#475569', margin: [0, 0, 0, 5], alignment: 'justify', lineHeight: 1.05 },
+          strong: { bold: true, color: '#0f172a' },
+          table: { margin: [0, 5, 0, 8] },
+          th: { bold: true, fillColor: '#e2e8f0', color: '#0f172a', fontSize: 8 },
+          td: { color: '#334155', fontSize: 8 },
+        }
       });
       const contenidoPropuestaFormateado = tipoDocumento === 'PROPUESTA' && contenidoPropuesta?.trim()
         ? htmlToPdfmake(contenidoPropuesta, {
           window: window,
           defaultStyles: {
-            p: { fontSize: 7.2, color: '#334155', margin: [0, 0, 0, 4], alignment: 'justify', lineHeight: 1.06 },
+            p: { fontSize: 8.5, color: '#334155', margin: [0, 0, 0, 5], alignment: 'justify', lineHeight: 1.08 },
             strong: { bold: true, color: '#0f172a' },
-            ul: { margin: [10, 0, 0, 4] },
-            ol: { margin: [10, 0, 0, 4] },
-            li: { fontSize: 7.2, color: '#334155', margin: [0, 0, 0, 2] },
+            ul: { margin: [12, 0, 0, 5] },
+            ol: { margin: [12, 0, 0, 5] },
+            li: { fontSize: 8.5, color: '#334155', margin: [0, 0, 0, 2] },
+            table: { margin: [0, 5, 0, 8] },
+            th: { bold: true, fillColor: '#e2e8f0', color: '#0f172a', fontSize: 8 },
+            td: { color: '#334155', fontSize: 8 },
           }
         })
         : [];
@@ -695,138 +686,148 @@ export default function TamikaERP() {
         : [contenidoPropuestaFormateado];
 
       const transparentPixel = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-      const fechaPdf = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-      const sidebarLine = (text, index) => ({
-        text,
-        fontSize: index === 0 ? 6.4 : 5.4,
-        bold: index === 0,
-        color: '#444444',
-        margin: [0, index === 0 ? 0 : 3, 0, 0],
-        lineHeight: 1.08,
-        noWrap: false,
-      });
-      const sidebarSection = (title, lines, y) => ({
-        table: {
-          widths: [112],
-          body: [
-            [{ text: title, fontSize: 6.8, bold: true, color: '#333333', margin: [0, 0, 0, 6] }],
-            ...(lines.length ? lines : ['Consumidor Final', 'N/A']).map((line, index) => [sidebarLine(line, index)]),
-          ],
-        },
-        layout: 'noBorders',
-        absolutePosition: { x: 18, y },
-      });
-      const headerRightBlock = {
-        table: {
-          widths: [138],
-          body: [
-            [{
-              text: nombreDocumento,
-              fontSize: nombreDocumento.length > 10 ? 22 : 23,
-              bold: true,
-              color: '#2f343b',
-              alignment: 'right',
-              margin: [0, 0, 0, 7],
-            }],
-            [{
-              text: `Fecha: ${fechaPdf}`,
-              fontSize: 8.5,
-              color: '#4b5563',
-              alignment: 'right',
-              margin: [0, 0, 0, 7],
-            }],
-            [{
-              text: etiquetaNumeroPdf,
-              fontSize: 8.2,
-              bold: true,
-              color: '#334155',
-              alignment: 'right',
-              margin: [0, 0, 0, 0],
-            }],
-          ],
-        },
-        layout: 'noBorders',
-        absolutePosition: { x: 450, y: 38 },
+      const fechaPdf = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+      const withoutBorders = {
+        hLineWidth: () => 0,
+        vLineWidth: () => 0,
+        paddingLeft: () => 0,
+        paddingRight: () => 0,
+        paddingTop: () => 0,
+        paddingBottom: () => 0,
       };
+      const entityCard = (title, lines) => ({
+        unbreakable: true,
+        table: {
+          widths: ['*'],
+          heights: [29, 96],
+          body: [
+            [{
+              text: title,
+              fontSize: 8,
+              color: '#475569',
+              bold: true,
+              fillColor: '#eef2f6',
+              margin: [10, 10, 10, 8],
+            }],
+            [{
+              stack: lines,
+              margin: [10, 11, 10, 8],
+            }],
+          ],
+        },
+        layout: withoutBorders,
+      });
+
+      const clienteCardLines = [
+        { text: datosPdfActual.clienteNombre || 'Consumidor Final', fontSize: 11, bold: true, color: '#0f172a', margin: [0, 0, 0, 5] },
+        { text: `RIF: ${datosPdfActual.clienteRif || 'N/A'}`, fontSize: 9, color: '#475569', margin: [0, 0, 0, 4] },
+        ...(datosPdfActual.clienteDireccion ? [{ text: datosPdfActual.clienteDireccion, fontSize: 9, color: '#475569', margin: [0, 0, 0, 4] }] : []),
+        ...(datosPdfActual.clienteTelefono ? [{ text: datosPdfActual.clienteTelefono, fontSize: 9, color: '#475569', margin: [0, 0, 0, 3] }] : []),
+        ...(datosPdfActual.clienteEmail ? [{ text: datosPdfActual.clienteEmail, fontSize: 9, color: '#475569' }] : []),
+      ];
+      const empresaCardLines = [
+        { text: datosPdfActual.empresaNombre || 'Servicios TAMIKA 0302, C.A.', fontSize: 10, bold: true, color: '#0f172a', margin: [0, 0, 0, 5] },
+        { text: `RIF: ${datosPdfActual.empresaRif || 'J-50634330-4'}`, fontSize: 9, color: '#475569', margin: [0, 0, 0, 4] },
+        ...(datosPdfActual.empresaDireccion ? [{ text: datosPdfActual.empresaDireccion, fontSize: 9, color: '#475569', margin: [0, 0, 0, 4] }] : []),
+        ...(datosPdfActual.empresaTelefono ? [{ text: datosPdfActual.empresaTelefono, fontSize: 9, bold: true, color: '#0f172a', margin: [0, 0, 0, 3] }] : []),
+        ...(datosPdfActual.empresaWeb ? [{ text: datosPdfActual.empresaWeb, fontSize: 9, color: '#475569' }] : []),
+      ];
+
+      const propuestaMeta = [
+        tituloCoti ? { text: tituloCoti, alignment: 'center', bold: true, color: '#0f172a', fontSize: 9, margin: [0, 0, 0, 4] } : null,
+        ...(tipoDocumento === 'PROPUESTA' ? [
+          datosPdfActual.proyecto ? { text: [{ text: 'Proyecto: ', bold: true }, datosPdfActual.proyecto], alignment: 'center', color: '#334155', fontSize: 8.5, margin: [0, 0, 0, 8] } : null,
+          datosPdfActual.saludo ? { text: datosPdfActual.saludo, alignment: 'center', bold: true, color: '#1f2937', fontSize: 8.5, margin: [0, 0, 0, 8] } : null,
+          ...(contenidoPropuestaStack.length ? [{ stack: contenidoPropuestaStack, margin: [0, 0, 0, 12] }] : []),
+        ] : []),
+      ].filter(Boolean);
 
       const docDefinition = {
         pageSize: 'LETTER',
-        pageMargins: [154, 132, 24, 28],
+        pageMargins: [40, 115, 40, 40],
+        defaultStyle: { font: 'Roboto', color: '#1e293b' },
         background: function(currentPage, pageSize) {
-          return [
-            {
-              canvas: [
-                { type: 'rect', x: 12, y: 18, w: pageSize.width - 24, h: 108, color: '#d7dce1' },
-                { type: 'rect', x: 12, y: 132, w: 130, h: pageSize.height - 150, color: '#eeeeee' },
-              ]
-            },
-            logoBase64
-              ? { image: logoBase64, width: 250, opacity: 0.045, absolutePosition: { x: 248, y: 300 } }
-              : { text: '', absolutePosition: { x: 250, y: 300 } },
-            { image: logoBase64 || transparentPixel, width: 66, absolutePosition: { x: 22, y: 31 } },
-            { text: 'Servicios\nTamika 0302,C.A', fontSize: 20, bold: true, color: '#2f343b', lineHeight: 0.84, absolutePosition: { x: 92, y: 35 } },
-            { text: 'RIF.: J-50634330-4', fontSize: 12, color: '#334155', absolutePosition: { x: 95, y: 92 } },
-            headerRightBlock,
-            sidebarSection('CLIENTE', sidebarCliente, 158),
-            sidebarSection('EMPRESA', sidebarEmpresa, 326),
-            logoBase64
-              ? { image: logoBase64, width: 112, opacity: 0.08, absolutePosition: { x: 20, y: 548 } }
-              : { text: '', absolutePosition: { x: 34, y: 560 } },
-            firmaUnificadaBase64
-              ? { image: firmaUnificadaBase64, width: 185, opacity: 0.95, absolutePosition: { x: -20, y: 590 } }
-              : { text: '', absolutePosition: { x: 18, y: 662 } },
-          ];
+          return {
+            canvas: [
+              { type: 'rect', x: 0, y: 0, w: pageSize.width, h: pageSize.height, color: '#ffffff' },
+            ],
+          };
+        },
+        info: {
+          title: `${nombreDocumento} ${numeroVisualPdf}`,
+          subject: `${nombreDocumento} comercial de Servicios Tamika 0302, C.A.`,
+          author: 'Servicios Tamika 0302, C.A.',
         },
         header: function(currentPage, pageCount) {
-          return { text: `(${currentPage}/${pageCount})`, fontSize: 7, bold: true, color: '#444444', absolutePosition: { x: 575, y: 136 } };
+          return [
+            { image: logoBase64 || transparentPixel, width: 55, absolutePosition: { x: 40, y: 30 } },
+            {
+              stack: [
+                { text: 'Servicios Tamika 0302, C.A.', fontSize: 17, bold: true, color: '#0f172a', margin: [0, 0, 0, 1] },
+                { text: 'RIF: J-50634330-4', fontSize: 11, bold: true, color: '#475569' },
+              ],
+              absolutePosition: { x: 110, y: 39 },
+            },
+            {
+              table: {
+                widths: [172],
+                body: [[{
+                  stack: [
+                    { text: nombreDocumentoPdf, fontSize: 20, bold: true, characterSpacing: 2.2, color: '#94a3b8', alignment: 'right', margin: [0, 0, 0, 4] },
+                    { text: `Fecha: ${fechaPdf}`, fontSize: 10, color: '#0f172a', alignment: 'right' },
+                    { text: `Nro. ${numeroVisualPdf}`, fontSize: 11, bold: true, color: '#0f172a', alignment: 'right' },
+                    { text: `(Pag ${currentPage}/${pageCount})`, fontSize: 9, bold: true, color: '#94a3b8', alignment: 'right', margin: [0, 2, 0, 0] },
+                  ],
+                }]],
+              },
+              layout: withoutBorders,
+              absolutePosition: { x: 400, y: 29 },
+            },
+          ];
         },
 
         content: [
-          tituloCoti ? { text: tituloCoti, alignment: 'center', bold: true, color: '#1f2937', fontSize: 6.5, margin: [0, 0, 0, 2] } : null,
-          datosPdfActual.proyecto ? { text: [{ text: 'Proyecto: ', bold: true }, datosPdfActual.proyecto], alignment: 'center', color: '#334155', fontSize: 6.5, margin: [0, 0, 0, 10] } : null,
-          datosPdfActual.saludo ? { text: datosPdfActual.saludo, alignment: 'center', bold: true, color: '#1f2937', fontSize: 6.8, margin: [0, 0, 0, 5] } : null,
-
-          ...(contenidoPropuestaStack.length ? [{
-            stack: contenidoPropuestaStack,
-            margin: [0, 0, 0, 10]
-          }] : []),
-
-          // TABLA DE ITEMS
+          {
+            columns: [
+              { width: '*', ...entityCard('FACTURAR A:', clienteCardLines) },
+              { width: '*', ...entityCard('EMPRESA EMISORA:', empresaCardLines) },
+            ],
+            columnGap: 25,
+            margin: [0, 0, 0, propuestaMeta.length ? 20 : 40],
+          },
+          ...propuestaMeta,
           {
             table: {
               headerRows: 1,
-              widths: [34, '*', 30, 58, 64],
+              widths: ['*', 45, 80, 95],
               body: tableBody
             },
-            layout: 'noBorders', // Los bordes se manejan a nivel de celda
-            margin: [0, 0, 0, 12]
+            layout: 'noBorders',
+            margin: [0, 0, 0, 20]
           },
-
-          // CUADRO DE TOTALES CON FONDO
           {
             columns: [
               { width: '*', text: '' },
               {
-                width: 190,
+                width: 240,
                 table: {
                   widths: ['*', '*'],
                   body: [
-                    [{ text: 'SUBTOTAL USD', fontSize: 7.5, color: '#475569', margin: [10, 9, 0, 4] }, { text: formatUsd(calcularSubtotal()), fontSize: 7.5, bold: true, alignment: 'right', margin: [0, 9, 10, 4] }],
-                    [{ text: 'IVA (16%)', fontSize: 7.5, color: '#475569', margin: [10, 0, 0, 9] }, { text: formatUsd(calcularIva()), fontSize: 7.5, bold: true, alignment: 'right', margin: [0, 0, 10, 9] }],
-                    [{ text: 'TOTAL USD', fontSize: 10, bold: true, color: '#ffffff', fillColor: '#0f172a', margin: [10, 9, 0, 9] }, { text: formatUsd(calcularTotal()), fontSize: 10, bold: true, color: '#34d399', fillColor: '#0f172a', alignment: 'right', margin: [0, 9, 10, 9] }]
+                    [{ text: 'SUBTOTAL USD', fontSize: 10, color: '#475569', fillColor: '#f8fafc', margin: [12, 10, 0, 5] }, { text: formatUsd(calcularSubtotal()), fontSize: 10, bold: true, fillColor: '#f8fafc', alignment: 'right', margin: [0, 10, 12, 5] }],
+                    [{ text: 'IVA (16%)', fontSize: 10, color: '#475569', fillColor: '#f8fafc', margin: [12, 0, 0, 10] }, { text: formatUsd(calcularIva()), fontSize: 10, bold: true, fillColor: '#f8fafc', alignment: 'right', margin: [0, 0, 12, 10] }],
+                    [{ text: 'TOTAL USD', fontSize: 15, bold: true, color: '#ffffff', fillColor: '#0f172a', margin: [12, 13, 0, 13] }, { text: formatUsd(calcularTotal()), fontSize: 15, bold: true, color: '#34d399', fillColor: '#0f172a', alignment: 'right', margin: [0, 13, 12, 13] }]
                   ]
                 },
                 layout: {
-                  fillColor: '#f8fafc', // Fondo gris claro para el bloque
                   hLineWidth: function (i, node) { return 0; }, vLineWidth: function (i, node) { return 0; }
                 },
-                margin: [0, 0, 0, 18]
+                margin: [0, 0, 0, 38]
               }
             ]
           },
-
-          { text: 'TÉRMINOS Y CONDICIONES GENERALES', fontSize: 7, color: '#0f172a', bold: true, margin: [0, 0, 0, 5] },
+          { text: 'TÉRMINOS Y CONDICIONES GENERALES', fontSize: 10, color: '#0f172a', bold: true, margin: [0, 0, 0, 8] },
           ...terminosFormateados,
+          firmaUnificadaBase64 ? { image: firmaUnificadaBase64, width: 300, alignment: 'center', margin: [0, 36, 0, 0] } : null,
         ]
       };
 
@@ -1222,7 +1223,7 @@ export default function TamikaERP() {
              </div>
 
              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-               <h3 className="text-xs font-bold uppercase text-slate-500">Barra lateral del PDF</h3>
+               <h3 className="text-xs font-bold uppercase text-slate-500">Datos comerciales del PDF</h3>
                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                  <div className="md:col-span-2 xl:col-span-4">
                    <label className="text-xs font-bold text-slate-500">Cliente para el PDF</label>
@@ -1283,14 +1284,18 @@ export default function TamikaERP() {
                    <label className="text-xs font-bold text-slate-500">Dirección empresa</label>
                    <textarea value={datosPdf.empresaDireccion} onChange={(e)=>updateDatosPdf('empresaDireccion', e.target.value)} rows={2} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none resize-y" />
                  </div>
-                 <div className="md:col-span-2">
-                   <label className="text-xs font-bold text-slate-500">Proyecto</label>
-                   <textarea value={datosPdf.proyecto} onChange={(e)=>updateDatosPdf('proyecto', e.target.value)} rows={2} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none resize-y" />
-                 </div>
-                 <div className="md:col-span-2 xl:col-span-4">
-                   <label className="text-xs font-bold text-slate-500">Saludo / destinatario</label>
-                   <input type="text" value={datosPdf.saludo} onChange={(e)=>updateDatosPdf('saludo', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
-                 </div>
+                  {tipoDocumento === 'PROPUESTA' && (
+                    <>
+                      <div className="md:col-span-2">
+                        <label className="text-xs font-bold text-slate-500">Proyecto</label>
+                        <textarea value={datosPdf.proyecto} onChange={(e)=>updateDatosPdf('proyecto', e.target.value)} rows={2} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none resize-y" />
+                      </div>
+                      <div className="md:col-span-2 xl:col-span-4">
+                        <label className="text-xs font-bold text-slate-500">Saludo / destinatario</label>
+                        <input type="text" value={datosPdf.saludo} onChange={(e)=>updateDatosPdf('saludo', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm outline-none" />
+                      </div>
+                    </>
+                  )}
                </div>
              </div>
 

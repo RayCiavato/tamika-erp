@@ -364,24 +364,19 @@ const consultarTasasActuales = async () => {
 };
 
 const prefijoDocumento = (tipoDocumento) => (tipoDocumento === 'PRESUPUESTO' ? 'PRES' : 'PROP');
-const claveCorrelativo = (tipoDocumento) => `correlativo_${tipoDocumento}`;
+const CORRELATIVO_GLOBAL_KEY = 'correlativo_DOCUMENTOS';
+const CORRELATIVO_DEFAULT_WIDTH = 7;
+const claveCorrelativoLegacy = (tipoDocumento) => `correlativo_${tipoDocumento}`;
 
-const formatCorrelativo = (tipoDocumento, secuencia, ancho = 6) => {
-  return `${prefijoDocumento(tipoDocumento)}-${String(secuencia).padStart(Math.max(ancho, 6), '0')}`;
+const formatCorrelativo = (tipoDocumento, secuencia, ancho = CORRELATIVO_DEFAULT_WIDTH) => {
+  return `${prefijoDocumento(tipoDocumento)}-${String(secuencia).padStart(Math.max(ancho, CORRELATIVO_DEFAULT_WIDTH), '0')}`;
 };
 
-const extraerSecuenciaCorrelativo = (numero, tipoDocumento) => {
+const extraerSecuenciaCorrelativo = (numero) => {
   const valor = numero?.toString().trim();
-  const match = valor?.match(/(\d+)$/);
+  const match = valor?.match(/^(?:(?:PROP|PRES)-)?(\d{1,8})$/i);
   if (!match) return null;
   const digitos = match[1];
-  const prefijoEsperado = valor.toUpperCase().startsWith(`${prefijoDocumento(tipoDocumento)}-`);
-  const soloDigitos = /^\d+$/.test(valor);
-  const legacyConCeros = /^0+\d+$/.test(digitos);
-  const legacyCorto = digitos.length <= 6;
-
-  if (!prefijoEsperado && !soloDigitos && !legacyConCeros && !legacyCorto) return null;
-  if (digitos.length > 8 || (!prefijoEsperado && !legacyConCeros && digitos.length > 6)) return null;
 
   const secuencia = Number.parseInt(digitos, 10);
   if (!Number.isFinite(secuencia)) return null;
@@ -393,28 +388,40 @@ const obtenerSiguienteCorrelativo = async (tx, tipoDocumento = 'PROPUESTA') => {
     throw new Error('tipoDocumento invalido.');
   }
 
-  const config = await tx.configuracionSistema.findUnique({
-    where: { clave: claveCorrelativo(tipoDocumento) },
+  const configs = await tx.configuracionSistema.findMany({
+    where: {
+      clave: {
+        in: [
+          CORRELATIVO_GLOBAL_KEY,
+          claveCorrelativoLegacy('PROPUESTA'),
+          claveCorrelativoLegacy('PRESUPUESTO'),
+        ],
+      },
+    },
   });
-  const configValor = config?.valor && typeof config.valor === 'object' ? config.valor : {};
-  const configSecuencia = Number.parseInt(configValor.siguienteNumero, 10);
-  const configAncho = Number.parseInt(configValor.ancho, 10);
 
   const correlativos = await tx.cotizacion.findMany({
-    where: { tipoDocumento },
     select: { numero: true },
   });
 
+  const baseConfig = configs.reduce((acc, config) => {
+    const valor = config?.valor && typeof config.valor === 'object' ? config.valor : {};
+    const siguienteNumero = Number.parseInt(valor.siguienteNumero, 10);
+    const ancho = Number.parseInt(valor.ancho, 10);
+    const secuencia = Number.isFinite(siguienteNumero) && siguienteNumero > 0 ? siguienteNumero - 1 : 0;
+    return {
+      secuencia: Math.max(acc.secuencia, secuencia),
+      ancho: Math.max(acc.ancho, Number.isFinite(ancho) ? ancho : CORRELATIVO_DEFAULT_WIDTH),
+    };
+  }, { secuencia: 0, ancho: CORRELATIVO_DEFAULT_WIDTH });
+
   const ultimo = correlativos.reduce((acc, item) => {
-    const parsed = extraerSecuenciaCorrelativo(item.numero, tipoDocumento);
+    const parsed = extraerSecuenciaCorrelativo(item.numero);
     if (!parsed) return acc;
     if (parsed.secuencia > acc.secuencia) return parsed;
     if (parsed.secuencia === acc.secuencia && parsed.ancho > acc.ancho) return parsed;
     return acc;
-  }, {
-    secuencia: Number.isFinite(configSecuencia) && configSecuencia > 0 ? configSecuencia - 1 : 0,
-    ancho: Number.isFinite(configAncho) && configAncho > 0 ? configAncho : 6,
-  });
+  }, baseConfig);
 
   return formatCorrelativo(tipoDocumento, ultimo.secuencia + 1, ultimo.ancho);
 };
@@ -466,7 +473,7 @@ const normalizeCotizacionAsociaciones = (value) => {
 const normalizeCotizacionPayload = (body) => {
   const errors = [];
   const tipoDocumento = body.tipoDocumento || 'PROPUESTA';
-  const estado = body.estado || 'BORRADOR';
+  const estado = body.estado || 'APROBADO';
   const subtotal = toNumber(body.subtotal);
   const iva = toNumber(body.iva);
   const total = toNumber(body.total);
@@ -1110,6 +1117,36 @@ app.put('/api/usuarios/:id', requireAdmin, async (req, res) => {
   }
 });
 
+app.patch('/api/usuarios/:id/estado', requireAdmin, async (req, res) => {
+  try {
+    const actual = await prisma.usuario.findUnique({ where: { id: req.params.id } });
+    if (!actual) return serializeError(res, 404, 'Usuario no encontrado.');
+
+    const activo = parseActivoUsuario(req.body.activo);
+    if (actual.rol === 'ADMIN' && !activo) {
+      const otrosAdmins = await prisma.usuario.count({
+        where: { id: { not: actual.id }, rol: 'ADMIN', activo: true },
+      });
+      if (otrosAdmins === 0) return serializeError(res, 400, 'Debe existir al menos un administrador activo.');
+    }
+
+    const usuario = await prisma.usuario.update({
+      where: { id: actual.id },
+      data: { activo },
+    });
+    await logAudit(req, {
+      accion: activo ? 'USUARIO_ACTIVATE' : 'USUARIO_DEACTIVATE',
+      entidad: 'Usuario',
+      entidadId: usuario.id,
+      descripcion: `Usuario ${activo ? 'activado' : 'desactivado'} por administrador: ${usuario.email}.`,
+      metadata: { rol: usuario.rol, activo },
+    });
+    res.json(adminUserView(usuario));
+  } catch (error) {
+    serializeError(res, 500, 'No se pudo cambiar el estado del usuario.');
+  }
+});
+
 // CLIENTES
 app.get('/api/clientes/siguiente-codigo', async (req, res) => {
   try {
@@ -1261,16 +1298,16 @@ const configurarCorrelativoHandler = async (req, res) => {
     if (!Number.isFinite(ancho) || ancho < 4 || ancho > 8) return serializeError(res, 400, 'ancho debe estar entre 4 y 8.');
 
     const config = await prisma.configuracionSistema.upsert({
-      where: { clave: claveCorrelativo(tipoDocumento) },
+      where: { clave: CORRELATIVO_GLOBAL_KEY },
       update: { valor: { siguienteNumero, ancho } },
-      create: { clave: claveCorrelativo(tipoDocumento), valor: { siguienteNumero, ancho } },
+      create: { clave: CORRELATIVO_GLOBAL_KEY, valor: { siguienteNumero, ancho } },
     });
     await logAudit(req, {
       accion: 'CORRELATIVO_CONFIG_UPDATE',
       entidad: 'ConfiguracionSistema',
       entidadId: config.clave,
-      descripcion: `Correlativo ${tipoDocumento} configurado desde ${siguienteNumero}.`,
-      metadata: { tipoDocumento, siguienteNumero, ancho },
+      descripcion: `Correlativo global de documentos configurado desde ${siguienteNumero}.`,
+      metadata: { alcance: 'PROPUESTA_Y_PRESUPUESTO', siguienteNumero, ancho },
     });
 
     res.json(config);
@@ -1347,10 +1384,7 @@ const actualizarCotizacion = async (req, res) => {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
         const cotizacion = await prisma.$transaction(async (tx) => {
-          const numero = numeroSolicitado
-            || (normalized.data.tipoDocumento !== actual.tipoDocumento
-            ? await obtenerSiguienteCorrelativo(tx, normalized.data.tipoDocumento)
-            : actual.numero);
+          const numero = numeroSolicitado || actual.numero;
 
           const errorNumero = await validarNumeroDisponible(tx, numero, actual.id);
           if (errorNumero) {
@@ -1520,10 +1554,36 @@ const eliminarPlantillaDocumento = async (req, res) => {
   }
 };
 
+const cambiarEstadoPlantillaDocumento = async (req, res) => {
+  try {
+    const actual = await prisma.plantillaDocumento.findFirst({
+      where: { id: req.params.id, deletedAt: null },
+    });
+    if (!actual) return serializeError(res, 404, 'Plantilla no encontrada.');
+
+    const activo = parseActivoPlantilla(req.body.activo);
+    const plantilla = await prisma.plantillaDocumento.update({
+      where: { id: actual.id },
+      data: { activo },
+    });
+    await logAudit(req, {
+      accion: activo ? 'PLANTILLA_DOCUMENTO_ACTIVATE' : 'PLANTILLA_DOCUMENTO_DEACTIVATE',
+      entidad: 'PlantillaDocumento',
+      entidadId: plantilla.id,
+      descripcion: `Plantilla ${activo ? 'activada' : 'desactivada'}: ${plantilla.nombre}.`,
+      metadata: { tipoDocumento: plantilla.tipoDocumento, activo },
+    });
+    res.json(plantilla);
+  } catch (error) {
+    serializeError(res, 400, 'No se pudo cambiar el estado de la plantilla.');
+  }
+};
+
 app.get('/api/plantillas-documento', listarPlantillasDocumento);
 app.get('/api/plantillas-documento/:id', obtenerPlantillaDocumento);
 app.post('/api/plantillas-documento', crearPlantillaDocumento);
 app.put('/api/plantillas-documento/:id', actualizarPlantillaDocumento);
+app.patch('/api/plantillas-documento/:id/estado', cambiarEstadoPlantillaDocumento);
 app.delete('/api/plantillas-documento/:id', eliminarPlantillaDocumento);
 
 app.get('/api/propuestas/siguiente-correlativo', obtenerSiguienteCorrelativoHandler);

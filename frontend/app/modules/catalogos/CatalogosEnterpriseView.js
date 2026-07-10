@@ -396,13 +396,19 @@ export default function CatalogosEnterpriseView({
     }
   };
 
-  const deactivate = async (endpoint, label) => {
-    if (!confirm(`Desactivar ${label}?`)) return;
+  const toggleCatalogState = async (endpoint, item, label) => {
+    const nextActive = !item.activo;
+    const action = nextActive ? 'activar' : 'desactivar';
+    if (!confirm(`¿Deseas ${action} ${label}?`)) return;
     try {
-      const res = await apiFetch(endpoint, { method: 'DELETE' });
-      await readJson(res, 'No se pudo desactivar.');
+      const res = await apiFetch(`${endpoint}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activo: nextActive }),
+      });
+      await readJson(res, `No se pudo ${action}.`);
       await cargarCatalogos();
-      setMensaje(`${label} desactivado.`);
+      setMensaje(`${label} ${nextActive ? 'activado' : 'desactivado'}.`);
     } catch (error) {
       setMensaje(error.message);
     }
@@ -506,6 +512,7 @@ export default function CatalogosEnterpriseView({
   const registrarStarlink = async () => {
     if (!isStarlinkSelection) return null;
     if (!asignacion.nombreAntena.trim()) throw new Error('El nombre de la antena Starlink es obligatorio.');
+    if (!asignacion.numeroSerie.trim()) throw new Error('El S/N de la antena Starlink es obligatorio.');
 
     let cuentaId = asignacion.cuentaStarlinkId;
     let cuenta = cuentasStarlink.find((item) => item.id === cuentaId);
@@ -538,7 +545,7 @@ export default function CatalogosEnterpriseView({
       clienteId: asignacion.clienteId,
       cuentaStarlinkId: cuentaId || null,
       numeroKit: asignacion.numeroKit || null,
-      numeroSerie: asignacion.numeroSerie || null,
+      numeroSerie: asignacion.numeroSerie.trim(),
       nombreAntena: asignacion.nombreAntena,
       ubicacion: asignacion.ubicacion || null,
       fechaRegistro: asignacion.fechaRegistro || today(),
@@ -742,7 +749,7 @@ export default function CatalogosEnterpriseView({
                     <input
                       type="number"
                       min="0"
-                      step="0.01"
+                      step="0.0001"
                       readOnly={!tasaEditadaManual}
                       value={asignacion.tasaBcv}
                       onChange={(event) => updateAsignacion('tasaBcv', event.target.value)}
@@ -836,7 +843,7 @@ export default function CatalogosEnterpriseView({
                   <td className="p-3 font-mono text-xs font-bold text-slate-600">{producto.codigoProducto || '-'}</td>
                   <td className="p-3"><p className="font-bold">{producto.nombre}</p><p className="text-xs text-slate-500">{producto.descripcion || '-'}</p></td>
                   <td className="p-3"><Status active={producto.activo} /></td>
-                  <td className="p-3 text-right"><RowActions onEdit={() => setProductoForm({ ...emptyProducto, ...producto })} onDelete={() => deactivate(`/api/productos/${producto.id}`, producto.nombre)} /></td>
+                  <td className="p-3 text-right"><RowActions active={producto.activo} onEdit={() => setProductoForm({ ...emptyProducto, ...producto })} onToggle={() => toggleCatalogState(`/api/productos/${producto.id}`, producto, producto.nombre)} /></td>
                 </tr>
               ))}
             </DataTable>
@@ -870,7 +877,7 @@ export default function CatalogosEnterpriseView({
                   <td className="p-3 font-mono text-xs font-bold text-slate-600">{servicio.codigoServicio || '-'}</td>
                   <td className="p-3"><p className="font-bold">{servicio.nombre}</p><p className="text-xs text-slate-500">{servicio.descripcion || '-'}</p></td>
                   <td className="p-3"><Status active={servicio.activo} /></td>
-                  <td className="p-3 text-right"><RowActions onEdit={() => setServicioForm({ ...emptyServicio, ...servicio })} onDelete={() => deactivate(`/api/servicios/${servicio.id}`, servicio.nombre)} /></td>
+                  <td className="p-3 text-right"><RowActions active={servicio.activo} onEdit={() => setServicioForm({ ...emptyServicio, ...servicio })} onToggle={() => toggleCatalogState(`/api/servicios/${servicio.id}`, servicio, servicio.nombre)} /></td>
                 </tr>
               ))}
             </DataTable>
@@ -994,7 +1001,7 @@ function ServiceLinesPanel({
                     <input
                       type="number"
                       min="0"
-                      step="0.01"
+                      step="0.0001"
                       readOnly={!line.tasaEditadaManual}
                       value={line.tasaBcv}
                       onChange={(event) => updateLine(line.id, 'tasaBcv', event.target.value)}
@@ -1142,8 +1149,8 @@ function StarlinkEnterpriseBlock({
         <Field label="Numero kit">
           <input value={form.numeroKit} onChange={(event) => update('numeroKit', event.target.value)} className="input" />
         </Field>
-        <Field label="Numero serie">
-          <input value={form.numeroSerie} onChange={(event) => update('numeroSerie', event.target.value)} className="input" />
+        <Field label="S/N (obligatorio)">
+          <input required value={form.numeroSerie} onChange={(event) => update('numeroSerie', event.target.value)} placeholder="Serial único de la antena" className="input" />
         </Field>
         <Field label="Fecha registro">
           <input type="date" value={form.fechaRegistro} onChange={(event) => update('fechaRegistro', event.target.value)} className="input" />
@@ -1272,11 +1279,13 @@ function Status({ active }) {
   return <span className={`rounded-full px-2 py-1 text-xs font-bold ${active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>{active ? 'Activo' : 'Inactivo'}</span>;
 }
 
-function RowActions({ onEdit, onDelete }) {
+function RowActions({ active, onEdit, onToggle }) {
   return (
     <div className="flex justify-end gap-3">
       <button type="button" onClick={onEdit} className="text-xs font-bold text-blue-600">Editar</button>
-      <button type="button" onClick={onDelete} className="text-xs font-bold text-red-600">Desactivar</button>
+      <button type="button" onClick={onToggle} className={`text-xs font-bold ${active ? 'text-red-600' : 'text-emerald-700'}`}>
+        {active ? 'Desactivar' : 'Activar'}
+      </button>
     </div>
   );
 }

@@ -155,6 +155,23 @@ export default function NominaView({ apiFetch = fetch, onChanged }) {
     }
   };
 
+  const cambiarEstadoEmpleado = async (empleado) => {
+    const activo = !empleado.activo;
+    if (!confirm(`¿Deseas ${activo ? 'activar' : 'desactivar'} a ${empleado.nombre}?`)) return;
+    try {
+      const res = await apiFetch(`/api/empleados/${empleado.id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activo }),
+      });
+      await readJson(res, 'No se pudo cambiar el estado del empleado.');
+      await cargarDatos();
+      setMensaje(`Empleado ${activo ? 'activado' : 'desactivado'}.`);
+    } catch (error) {
+      setMensaje(error.message);
+    }
+  };
+
   return (
     <section className="space-y-6">
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
@@ -198,7 +215,7 @@ export default function NominaView({ apiFetch = fetch, onChanged }) {
             <Field label="Salario base USD"><input type="number" min="0" step="0.01" value={nominaForm.salarioBaseUsd} onChange={(e) => setNominaForm((prev) => ({ ...prev, salarioBaseUsd: e.target.value }))} className="input" /></Field>
             <Field label="Bonos USD"><input type="number" min="0" step="0.01" value={nominaForm.bonosUsd} onChange={(e) => setNominaForm((prev) => ({ ...prev, bonosUsd: e.target.value }))} className="input" /></Field>
             <Field label="Deducciones USD"><input type="number" min="0" step="0.01" value={nominaForm.deduccionesUsd} onChange={(e) => setNominaForm((prev) => ({ ...prev, deduccionesUsd: e.target.value }))} className="input" /></Field>
-            <Field label="Tasa BCV"><input type="number" min="0" step="0.01" value={nominaForm.tasaBcv} onChange={(e) => setNominaForm((prev) => ({ ...prev, tasaBcv: e.target.value }))} className="input" /></Field>
+            <Field label="Tasa BCV"><input type="number" min="0" step="0.0001" value={nominaForm.tasaBcv} onChange={(e) => setNominaForm((prev) => ({ ...prev, tasaBcv: e.target.value }))} className="input" /></Field>
             <Field label="Fecha pago"><input type="date" value={nominaForm.fechaPago} onChange={(e) => setNominaForm((prev) => ({ ...prev, fechaPago: e.target.value }))} className="input" /></Field>
             <Field label="Estado">
               <select value={nominaForm.estado} onChange={(e) => setNominaForm((prev) => ({ ...prev, estado: e.target.value }))} className="input">
@@ -247,7 +264,7 @@ export default function NominaView({ apiFetch = fetch, onChanged }) {
             <label className="flex items-center gap-2 text-sm font-bold text-slate-700"><input type="checkbox" checked={empleadoForm.activo} onChange={(e) => setEmpleadoForm((prev) => ({ ...prev, activo: e.target.checked }))} className="h-4 w-4 accent-emerald-600" />Activo</label>
           </PanelForm>
 
-          <DataTable headers={['Código', 'Empleado', 'Cargo', 'Contacto', 'Salario', 'Acciones']}>
+          <DataTable headers={['Código', 'Empleado', 'Cargo', 'Contacto', 'Salario', 'Estado', 'Acciones']}>
             {empleados.map((empleado) => (
               <tr key={empleado.id} className="border-b last:border-b-0">
                 <td className="p-3 font-mono text-xs font-bold text-slate-600">{empleado.codigoEmpleado || '-'}</td>
@@ -255,7 +272,8 @@ export default function NominaView({ apiFetch = fetch, onChanged }) {
                 <td className="p-3">{empleado.cargo || '-'}</td>
                 <td className="p-3">{empleado.telefono || '-'}<p className="text-xs text-slate-500">{empleado.email || ''}</p></td>
                 <td className="p-3 font-bold">{formatUsd(empleado.salarioBaseUsd)}</td>
-                <td className="p-3 text-right"><Actions onEdit={() => setEmpleadoForm({ ...emptyEmpleado, ...empleado, fechaIngreso: toInputDate(empleado.fechaIngreso), salarioBaseUsd: empleado.salarioBaseUsd?.toString() || '' })} onDelete={() => anular(`/api/empleados/${empleado.id}`, empleado.nombre)} /></td>
+                <td className="p-3"><EstadoRegistro activo={empleado.activo} /></td>
+                <td className="p-3 text-right"><Actions onEdit={() => setEmpleadoForm({ ...emptyEmpleado, ...empleado, fechaIngreso: toInputDate(empleado.fechaIngreso), salarioBaseUsd: empleado.salarioBaseUsd?.toString() || '' })} onDelete={() => cambiarEstadoEmpleado(empleado)} deleteLabel={empleado.activo ? 'Desactivar' : 'Activar'} positive={!empleado.activo} /></td>
               </tr>
             ))}
           </DataTable>
@@ -319,11 +337,15 @@ function Estado({ estado }) {
   return <span className={`rounded-full px-2 py-1 text-xs font-bold ${styles[estado] || styles.PENDIENTE}`}>{estado}</span>;
 }
 
-function Actions({ onEdit, onDelete }) {
+function EstadoRegistro({ activo }) {
+  return <span className={`rounded-full px-2 py-1 text-xs font-bold ${activo ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>{activo ? 'ACTIVO' : 'INACTIVO'}</span>;
+}
+
+function Actions({ onEdit, onDelete, deleteLabel = 'Anular', positive = false }) {
   return (
     <div className="flex justify-end gap-3">
       <button type="button" onClick={onEdit} className="text-xs font-bold text-blue-600">Editar</button>
-      <button type="button" onClick={onDelete} className="text-xs font-bold text-red-600">Anular</button>
+      <button type="button" onClick={onDelete} className={`text-xs font-bold ${positive ? 'text-emerald-700' : 'text-red-600'}`}>{deleteLabel}</button>
     </div>
   );
 }

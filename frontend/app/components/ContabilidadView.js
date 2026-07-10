@@ -474,7 +474,7 @@ export default function ContabilidadView({ clientes = [], onChanged, tasaBcvActu
                   {loadingTasa ? 'Consultando...' : 'Actualizar tasa BCV'}
                 </button>
               </div>
-              <input type="number" min="0" step="0.01" value={form.tasaBcv} onChange={(e) => updateTasaManual(e.target.value)} className="input" />
+              <input type="number" min="0" step="0.0001" value={form.tasaBcv} onChange={(e) => updateTasaManual(e.target.value)} className="input" />
               <p className={`mt-1 text-[11px] ${form.tasaFuente === 'MANUAL' ? 'text-amber-700' : form.tasaFuente === 'NO_DISPONIBLE' ? 'text-red-600' : 'text-emerald-700'}`}>
                 {loadingTasa ? 'Consultando tasa actual...' : tasaMensaje || tasaFuenteLabel[form.tasaFuente] || tasaFuenteLabel.NO_DISPONIBLE}
               </p>

@@ -431,6 +431,25 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
     }
   };
 
+  const cambiarEstado = async (plantilla) => {
+    const activo = !plantilla.activo;
+    if (!confirm(`¿Deseas ${activo ? 'activar' : 'desactivar'} la plantilla "${plantilla.nombre}"?`)) return;
+    setMensaje('');
+
+    try {
+      const res = await apiFetch(`/api/plantillas-documento/${plantilla.id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activo }),
+      });
+      await readJson(res, 'No se pudo cambiar el estado de la plantilla.');
+      setMensaje(`Plantilla ${activo ? 'activada' : 'desactivada'}.`);
+      onChanged?.();
+    } catch (error) {
+      setMensaje(error.message);
+    }
+  };
+
   const plantillasFiltradas = useMemo(() => {
     const term = buscar.trim().toLowerCase();
     if (!term) return plantillas;
@@ -575,6 +594,7 @@ export default function PlantillasDocumentoView({ apiFetch = fetch, plantillas =
                   </td>
                   <td className="p-3 text-right">
                     <button type="button" onClick={() => editar(plantilla)} className="mr-3 text-xs font-bold text-blue-600">Editar</button>
+                    <button type="button" onClick={() => cambiarEstado(plantilla)} className={`mr-3 text-xs font-bold ${plantilla.activo ? 'text-amber-700' : 'text-emerald-700'}`}>{plantilla.activo ? 'Desactivar' : 'Activar'}</button>
                     <button type="button" onClick={() => eliminar(plantilla)} className="text-xs font-bold text-red-600">Eliminar</button>
                   </td>
                 </tr>

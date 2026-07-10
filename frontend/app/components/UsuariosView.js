@@ -88,6 +88,24 @@ export default function UsuariosView({ apiFetch }) {
     }
   };
 
+  const cambiarEstado = async (usuario) => {
+    const activo = !usuario.activo;
+    if (!confirm(`¿Deseas ${activo ? 'activar' : 'desactivar'} a ${usuario.nombre}?`)) return;
+    setMensaje('');
+    try {
+      const res = await apiFetch(`/api/usuarios/${usuario.id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activo }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'No se pudo cambiar el estado del usuario.');
+      await cargarUsuarios();
+    } catch (error) {
+      setMensaje(error.message);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div>
@@ -161,7 +179,10 @@ export default function UsuariosView({ apiFetch }) {
                   </td>
                   <td className="p-3 text-slate-500">{usuario.createdAt ? new Date(usuario.createdAt).toLocaleDateString('es-VE') : '-'}</td>
                   <td className="p-3 text-right">
-                    <button onClick={() => editar(usuario)} className="font-bold text-blue-600">Editar</button>
+                    <button onClick={() => editar(usuario)} className="mr-3 text-xs font-bold text-blue-600">Editar</button>
+                    <button onClick={() => cambiarEstado(usuario)} className={`text-xs font-bold ${usuario.activo ? 'text-red-600' : 'text-emerald-700'}`}>
+                      {usuario.activo ? 'Desactivar' : 'Activar'}
+                    </button>
                   </td>
                 </tr>
               ))}

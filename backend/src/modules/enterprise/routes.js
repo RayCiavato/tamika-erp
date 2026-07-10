@@ -219,6 +219,23 @@ const registerTipoRoutes = (app, { prisma, logAudit, serializeError, path, model
       serializeError(res, 400, `No se pudo desactivar el ${entity}.`);
     }
   });
+
+  app.patch(`/api/${path}/:id/estado`, async (req, res) => {
+    try {
+      const activo = parseActivo(req.body.activo);
+      const row = await prisma[modelName].update({ where: { id: req.params.id }, data: { activo } });
+      await safeAudit(logAudit, req, {
+        accion: `${entity.toUpperCase()}_${activo ? 'ACTIVATE' : 'DEACTIVATE'}`,
+        entidad: entity,
+        entidadId: row.id,
+        descripcion: `${entity} ${activo ? 'activado' : 'desactivado'}: ${row.nombre}.`,
+        metadata: { activo },
+      });
+      res.json(row);
+    } catch (error) {
+      serializeError(res, 400, `No se pudo cambiar el estado del ${entity}.`);
+    }
+  });
 };
 
 const registerCatalogRoutes = (app, { prisma, logAudit, serializeError }) => {
@@ -382,6 +399,23 @@ const registerCatalogRoutes = (app, { prisma, logAudit, serializeError }) => {
     }
   });
 
+  app.patch('/api/servicios/:id/estado', async (req, res) => {
+    try {
+      const activo = parseActivo(req.body.activo);
+      const row = await prisma.servicio.update({ where: { id: req.params.id }, data: { activo } });
+      await safeAudit(logAudit, req, {
+        accion: activo ? 'SERVICIO_ACTIVATE' : 'SERVICIO_DEACTIVATE',
+        entidad: 'Servicio',
+        entidadId: row.id,
+        descripcion: `Servicio ${activo ? 'activado' : 'desactivado'}: ${row.nombre}.`,
+        metadata: { activo },
+      });
+      res.json(row);
+    } catch (error) {
+      serializeError(res, 400, 'No se pudo cambiar el estado del servicio.');
+    }
+  });
+
   app.get('/api/productos', async (req, res) => {
     try {
       const rows = await prisma.producto.findMany({
@@ -504,6 +538,23 @@ const registerCatalogRoutes = (app, { prisma, logAudit, serializeError }) => {
     }
   });
 
+  app.patch('/api/productos/:id/estado', async (req, res) => {
+    try {
+      const activo = parseActivo(req.body.activo);
+      const row = await prisma.producto.update({ where: { id: req.params.id }, data: { activo } });
+      await safeAudit(logAudit, req, {
+        accion: activo ? 'PRODUCTO_ACTIVATE' : 'PRODUCTO_DEACTIVATE',
+        entidad: 'Producto',
+        entidadId: row.id,
+        descripcion: `Producto ${activo ? 'activado' : 'desactivado'}: ${row.nombre}.`,
+        metadata: { activo },
+      });
+      res.json(row);
+    } catch (error) {
+      serializeError(res, 400, 'No se pudo cambiar el estado del producto.');
+    }
+  });
+
   app.get('/api/proveedores', async (req, res) => {
     try {
       const rows = await prisma.proveedor.findMany({
@@ -604,6 +655,23 @@ const registerCatalogRoutes = (app, { prisma, logAudit, serializeError }) => {
       serializeError(res, 400, 'No se pudo desactivar el proveedor.');
     }
   });
+
+  app.patch('/api/proveedores/:id/estado', async (req, res) => {
+    try {
+      const activo = parseActivo(req.body.activo);
+      const row = await prisma.proveedor.update({ where: { id: req.params.id }, data: { activo } });
+      await safeAudit(logAudit, req, {
+        accion: activo ? 'PROVEEDOR_ACTIVATE' : 'PROVEEDOR_DEACTIVATE',
+        entidad: 'Proveedor',
+        entidadId: row.id,
+        descripcion: `Proveedor ${activo ? 'activado' : 'desactivado'}: ${row.nombre}.`,
+        metadata: { activo },
+      });
+      res.json(row);
+    } catch (error) {
+      serializeError(res, 400, 'No se pudo cambiar el estado del proveedor.');
+    }
+  });
 };
 
 const movimientoStarlinkData = (pago, cuenta) => {
@@ -646,6 +714,16 @@ const syncPagoStarlinkMovimiento = async (tx, pago) => {
     where: { id: pago.id },
     data: { movimientoContableId: movimiento.id },
     include: { cliente: true, cuentaStarlink: true },
+  });
+};
+
+const existeNumeroSerieStarlink = async (prisma, numeroSerie, excludeId = null) => {
+  return prisma.antenaStarlink.findFirst({
+    where: {
+      numeroSerie: { equals: numeroSerie, mode: 'insensitive' },
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    select: { id: true },
   });
 };
 
@@ -755,12 +833,36 @@ const registerStarlinkRoutes = (app, { prisma, logAudit, serializeError }) => {
     }
   });
 
+  app.patch('/api/starlink/cuentas/:id/estado', async (req, res) => {
+    try {
+      const estado = normalizeEstado(req.body.estado, STARLINK_ESTADOS, 'ACTIVA');
+      const row = await prisma.cuentaStarlink.update({ where: { id: req.params.id }, data: { estado } });
+      const activa = estado === 'ACTIVA';
+      await safeAudit(logAudit, req, {
+        accion: activa ? 'STARLINK_CUENTA_ACTIVATE' : 'STARLINK_CUENTA_DEACTIVATE',
+        entidad: 'CuentaStarlink',
+        entidadId: row.id,
+        descripcion: `Cuenta Starlink ${activa ? 'activada' : 'desactivada'}: ${row.nombreCuenta}.`,
+        metadata: { estado },
+      });
+      res.json(row);
+    } catch (error) {
+      serializeError(res, 400, 'No se pudo cambiar el estado de la cuenta Starlink.');
+    }
+  });
+
   app.get('/api/starlink/antenas', async (req, res) => {
     try {
       const where = {};
       if (req.query.clienteId) where.clienteId = req.query.clienteId.toString();
       if (req.query.cuentaStarlinkId) where.cuentaStarlinkId = req.query.cuentaStarlinkId.toString();
       if (req.query.estado) where.estado = req.query.estado.toString();
+      if (req.query.buscar) {
+        const buscar = cleanText(req.query.buscar);
+        where.OR = ['nombreAntena', 'numeroKit', 'numeroSerie', 'ubicacion'].map((field) => ({
+          [field]: { contains: buscar, mode: 'insensitive' },
+        }));
+      }
       res.json(await prisma.antenaStarlink.findMany({
         where,
         include: { cliente: true, cuentaStarlink: true },
@@ -778,14 +880,20 @@ const registerStarlinkRoutes = (app, { prisma, logAudit, serializeError }) => {
         : null;
       const clienteId = nullableText(req.body.clienteId) || cuenta?.clienteId;
       const nombreAntena = cleanText(req.body.nombreAntena);
-      if (!clienteId || !nombreAntena) return serializeError(res, 400, 'Cliente y nombre de antena son obligatorios.');
+      const numeroSerie = cleanText(req.body.numeroSerie);
+      if (!clienteId || !nombreAntena || !numeroSerie) {
+        return serializeError(res, 400, 'Cliente, nombre de antena y S/N son obligatorios.');
+      }
+      if (await existeNumeroSerieStarlink(prisma, numeroSerie)) {
+        return serializeError(res, 409, 'Ya existe una antena con ese S/N.');
+      }
 
       const row = await prisma.antenaStarlink.create({
         data: {
           clienteId,
           cuentaStarlinkId: cuenta?.id || nullableText(req.body.cuentaStarlinkId),
           numeroKit: nullableText(req.body.numeroKit),
-          numeroSerie: nullableText(req.body.numeroSerie),
+          numeroSerie,
           nombreAntena,
           ubicacion: nullableText(req.body.ubicacion),
           fechaRegistro: parseDate(req.body.fechaRegistro) || new Date(),
@@ -801,6 +909,7 @@ const registerStarlinkRoutes = (app, { prisma, logAudit, serializeError }) => {
         entidad: 'AntenaStarlink',
         entidadId: row.id,
         descripcion: `Antena Starlink creada: ${row.nombreAntena}.`,
+        metadata: { numeroSerie: row.numeroSerie, numeroKit: row.numeroKit },
       });
       res.status(201).json(row);
     } catch (error) {
@@ -824,13 +933,20 @@ const registerStarlinkRoutes = (app, { prisma, logAudit, serializeError }) => {
       const cuenta = req.body.cuentaStarlinkId
         ? await prisma.cuentaStarlink.findUnique({ where: { id: req.body.cuentaStarlinkId } })
         : null;
+      const numeroSerie = cleanText(req.body.numeroSerie);
+      if (!cleanText(req.body.nombreAntena) || !numeroSerie) {
+        return serializeError(res, 400, 'Nombre de antena y S/N son obligatorios.');
+      }
+      if (await existeNumeroSerieStarlink(prisma, numeroSerie, req.params.id)) {
+        return serializeError(res, 409, 'Ya existe una antena con ese S/N.');
+      }
       const row = await prisma.antenaStarlink.update({
         where: { id: req.params.id },
         data: {
           clienteId: nullableText(req.body.clienteId) || cuenta?.clienteId,
           cuentaStarlinkId: cuenta?.id || nullableText(req.body.cuentaStarlinkId),
           numeroKit: nullableText(req.body.numeroKit),
-          numeroSerie: nullableText(req.body.numeroSerie),
+          numeroSerie,
           nombreAntena: cleanText(req.body.nombreAntena),
           ubicacion: nullableText(req.body.ubicacion),
           fechaRegistro: parseDate(req.body.fechaRegistro) || undefined,
@@ -846,6 +962,7 @@ const registerStarlinkRoutes = (app, { prisma, logAudit, serializeError }) => {
         entidad: 'AntenaStarlink',
         entidadId: row.id,
         descripcion: `Antena Starlink actualizada: ${row.nombreAntena}.`,
+        metadata: { numeroSerie: row.numeroSerie, numeroKit: row.numeroKit },
       });
       res.json(row);
     } catch (error) {
@@ -866,6 +983,24 @@ const registerStarlinkRoutes = (app, { prisma, logAudit, serializeError }) => {
       res.json(row);
     } catch (error) {
       serializeError(res, 400, 'No se pudo desactivar la antena Starlink.');
+    }
+  });
+
+  app.patch('/api/starlink/antenas/:id/estado', async (req, res) => {
+    try {
+      const estado = normalizeEstado(req.body.estado, STARLINK_ESTADOS, 'ACTIVA');
+      const row = await prisma.antenaStarlink.update({ where: { id: req.params.id }, data: { estado } });
+      const activa = estado === 'ACTIVA';
+      await safeAudit(logAudit, req, {
+        accion: activa ? 'STARLINK_ANTENA_ACTIVATE' : 'STARLINK_ANTENA_DEACTIVATE',
+        entidad: 'AntenaStarlink',
+        entidadId: row.id,
+        descripcion: `Antena Starlink ${activa ? 'activada' : 'desactivada'}: ${row.nombreAntena}.`,
+        metadata: { estado, numeroSerie: row.numeroSerie },
+      });
+      res.json(row);
+    } catch (error) {
+      serializeError(res, 400, 'No se pudo cambiar el estado de la antena Starlink.');
     }
   });
 
@@ -1179,6 +1314,23 @@ const registerNominaRoutes = (app, { prisma, logAudit, serializeError }) => {
       res.json(row);
     } catch (error) {
       serializeError(res, 400, 'No se pudo desactivar el empleado.');
+    }
+  });
+
+  app.patch('/api/empleados/:id/estado', async (req, res) => {
+    try {
+      const activo = parseActivo(req.body.activo);
+      const row = await prisma.empleado.update({ where: { id: req.params.id }, data: { activo } });
+      await safeAudit(logAudit, req, {
+        accion: activo ? 'EMPLEADO_ACTIVATE' : 'EMPLEADO_DEACTIVATE',
+        entidad: 'Empleado',
+        entidadId: row.id,
+        descripcion: `Empleado ${activo ? 'activado' : 'desactivado'}: ${row.nombre}.`,
+        metadata: { activo },
+      });
+      res.json(row);
+    } catch (error) {
+      serializeError(res, 400, 'No se pudo cambiar el estado del empleado.');
     }
   });
 

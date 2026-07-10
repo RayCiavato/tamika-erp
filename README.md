@@ -116,6 +116,16 @@ El `grep` no debe mostrar operaciones destructivas. Este repositorio aun no incl
 
 La actualizacion actual solo agrega columnas opcionales (`metodoPago`, `movimientoRelacionadoId`), sus indices y la tabla de asociaciones de cotizaciones. No elimina ni renombra tablas o columnas existentes.
 
+### Correlativo global y estados reversibles
+
+- Propuestas y presupuestos nuevos comparten una sola secuencia. El sistema toma el mayor correlativo historico de ambos tipos y genera el siguiente con siete digitos, por ejemplo `PRES-0000001` y luego `PROP-0000002`.
+- Los numeros antiguos, incluso los cargados manualmente, no se reescriben. Cambiar el tipo de un documento existente tampoco cambia su correlativo.
+- La interfaz usa `Propuesta` como tipo inicial y conserva la seleccion actual mientras el usuario trabaja. Los estados operativos visibles son `APROBADO`, `FACTURADO` y `ANULADO`; el backend mantiene compatibilidad con documentos historicos en `BORRADOR` o `CONVERTIDO`.
+- Productos, servicios, plantillas, usuarios, empleados, cuentas Starlink y antenas pueden activarse o desactivarse sin borrar su historia. Cada cambio deja una entrada de auditoria.
+- El S/N es obligatorio para nuevas antenas Starlink y permite buscar el registro. Las antenas antiguas sin S/N siguen siendo legibles para no bloquear datos existentes.
+- Las tasas BCV aceptan cuatro decimales en Contabilidad, Productos, Servicios, Nomina y Starlink.
+- Esta mejora no agrega ni elimina columnas. Aun asi, conserva el respaldo y la vista previa de Prisma porque el servidor puede venir de una version anterior del proyecto.
+
 ### Actualizacion sin Docker
 
 Backend:
@@ -149,7 +159,9 @@ Ajusta los nombres de `pm2` si en el servidor se usan otros procesos.
 5. En `Contabilidad`, valida que la tasa BCV se pueda actualizar y guardar.
 6. Confirma el metodo de pago, las graficas y el comparativo mensual de reportes.
 7. Registra dos servicios para un mismo cliente y revisa sus fechas independientes.
-8. Revisa logs si algo no carga:
+8. Cambia entre `Propuesta` y `Presupuesto` y confirma que ambos avanzan sobre la misma secuencia.
+9. Registra una antena con S/N, buscala por ese valor y prueba desactivarla y reactivarla.
+10. Revisa logs si algo no carga:
 
 ```bash
 docker compose logs --tail=100 backend

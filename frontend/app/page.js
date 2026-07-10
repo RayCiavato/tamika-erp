@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import currency from 'currency.js';
 import dynamic from 'next/dynamic';
 import DashboardView from './components/DashboardView';
@@ -42,7 +42,10 @@ const DOCUMENTO_OPTIONS = [
   { value: 'PROPUESTA', label: 'Propuesta' },
   { value: 'PRESUPUESTO', label: 'Presupuesto' },
 ];
-const ESTADO_DOCUMENTO_OPTIONS = ['BORRADOR', 'APROBADO', 'CONVERTIDO', 'FACTURADO', 'ANULADO'];
+const ESTADO_DOCUMENTO_OPTIONS = ['APROBADO', 'FACTURADO', 'ANULADO'];
+const estadoDocumentoVisible = (estado) => (
+  ['BORRADOR', 'CONVERTIDO'].includes(estado) ? 'APROBADO' : (estado || 'APROBADO')
+);
 const documentoLabel = (tipoDocumento) => (tipoDocumento === 'PRESUPUESTO' ? 'Presupuesto' : 'Propuesta');
 const buildAsociacionCotizacion = (overrides = {}) => ({
   _key: overrides.id || `${Date.now()}-${Math.random()}`,
@@ -123,8 +126,10 @@ export default function TamikaERP() {
   const [cotiEditandoId, setCotiEditandoId] = useState(null);
   const [clienteSelect, setClienteSelect] = useState('');
   const [nroCoti, setNroCoti] = useState('');
+  const [correlativoEditadoManual, setCorrelativoEditadoManual] = useState(false);
+  const correlativoRequestId = useRef(0);
   const [tipoDocumento, setTipoDocumento] = useState('PROPUESTA');
-  const [estadoDocumento, setEstadoDocumento] = useState('BORRADOR');
+  const [estadoDocumento, setEstadoDocumento] = useState('APROBADO');
   const [tituloCoti, setTituloCoti] = useState('');
   const [vigencia, setVigencia] = useState(DEFAULT_VIGENCIA);
   const [condiciones, setCondiciones] = useState(DEFAULT_TERMS);
@@ -205,10 +210,7 @@ export default function TamikaERP() {
 
   useEffect(() => {
     if (authUser && authToken) cargarDatos();
-  }, [authUser, authToken]);
-  useEffect(() => {
-    if (authUser && !cotiEditandoId) cargarSiguienteCorrelativo(tipoDocumento);
-  }, [tipoDocumento, cotiEditandoId, authUser]);
+  }, [authUser, authToken, activeView]);
 
   useEffect(() => {
     if (saludoEditadoManual || !datosPdf.clienteNombre) return;
@@ -223,18 +225,24 @@ export default function TamikaERP() {
   }, [datosPdf.clienteNombre, saludoEditadoManual]);
 
   const cargarSiguienteCorrelativo = async (tipo = tipoDocumento) => {
+    const requestId = correlativoRequestId.current + 1;
+    correlativoRequestId.current = requestId;
     try {
       const res = await apiFetch(`/api/propuestas/siguiente-correlativo?tipoDocumento=${tipo}`);
       const data = await res.json();
-      if (res.ok && data.numero) setNroCoti(data.numero);
+      if (requestId === correlativoRequestId.current && res.ok && data.numero) {
+        setNroCoti(data.numero);
+        setCorrelativoEditadoManual(false);
+      }
     } catch (error) {
-      setNroCoti('');
+      if (requestId === correlativoRequestId.current) setNroCoti('');
     }
   };
 
   const handleTipoDocumentoChange = (value) => {
     setTipoDocumento(value);
     setPlantillaSeleccionadaId('');
+    setCorrelativoEditadoManual(false);
     cargarSiguienteCorrelativo(value);
   };
 
@@ -406,13 +414,13 @@ export default function TamikaERP() {
     setActiveView('contabilidad');
   };
 
-  const cargarDatos = () => {
+  const cargarDatos = ({ actualizarCorrelativo = true } = {}) => {
     apiFetch('/api/clientes').then(res => res.json()).then(data => setClientes(Array.isArray(data) ? data : []));
     apiFetch('/api/productos').then(res => res.json()).then(data => setProductos(Array.isArray(data) ? data : [])).catch(() => setProductos([]));
     apiFetch('/api/servicios').then(res => res.json()).then(data => setServicios(Array.isArray(data) ? data : [])).catch(() => setServicios([]));
     apiFetch('/api/propuestas').then(res => res.json()).then(data => setHistorialCoti(Array.isArray(data) ? data : []));
     apiFetch('/api/plantillas-documento').then(res => res.json()).then(data => setPlantillasDocumento(Array.isArray(data) ? data : [])).catch(() => setPlantillasDocumento([]));
-    if (!cotiEditandoId) cargarSiguienteCorrelativo(tipoDocumento);
+    if (actualizarCorrelativo && !cotiEditandoId && !correlativoEditadoManual) cargarSiguienteCorrelativo(tipoDocumento);
     sincronizarTasasActuales({ silent: true });
     cargarAlertasStarlink();
     setLoadingDashboard(true);
@@ -459,8 +467,10 @@ export default function TamikaERP() {
   const limpiarFormulario = () => {
     setCotiEditandoId(null);
     setTipoDocumento('PROPUESTA');
-    setEstadoDocumento('BORRADOR');
+    setEstadoDocumento('APROBADO');
     setNroCoti('');
+    setCorrelativoEditadoManual(false);
+    correlativoRequestId.current += 1;
     setTituloCoti('');
     setClienteSelect('');
     setPlantillaSeleccionadaId('');
@@ -582,7 +592,7 @@ export default function TamikaERP() {
     const data = await res.json().catch(() => null);
     if (!res.ok) return alert(data?.details?.join('\n') || data?.error || 'No se pudo guardar la plantilla.');
     setPlantillaSeleccionadaId(data.id);
-    cargarDatos();
+    cargarDatos({ actualizarCorrelativo: false });
     alert('Plantilla guardada.');
   };
 
@@ -590,7 +600,7 @@ export default function TamikaERP() {
     if(!clienteSelect) return alert("Selecciona un cliente.");
     const payload = {
       tipoDocumento,
-      numero: nroCoti.trim() || undefined,
+      numero: (cotiEditandoId || correlativoEditadoManual) ? (nroCoti.trim() || undefined) : undefined,
       estado: estadoDocumento,
       clienteId: clienteSelect,
       titulo: tituloCoti,
@@ -617,18 +627,22 @@ export default function TamikaERP() {
     if (!res.ok) return alert(data?.details?.join('\n') || data?.error || "No se pudo guardar el documento.");
     setCotiEditandoId(data.id);
     setNroCoti(data.numero || nroCoti);
+    setCorrelativoEditadoManual(true);
+    correlativoRequestId.current += 1;
     setTipoDocumento(data.tipoDocumento || tipoDocumento);
-    setEstadoDocumento(data.estado || estadoDocumento);
+    setEstadoDocumento(estadoDocumentoVisible(data.estado));
     setAsociacionesCoti(Array.isArray(data.asociaciones) ? data.asociaciones.map(buildAsociacionCotizacion) : asociacionesCoti);
     alert(cotiEditandoId ? "Actualizada exitosamente." : "Guardada exitosamente.");
-    cargarDatos();
+    cargarDatos({ actualizarCorrelativo: false });
   };
 
   const cargarDesdeModal = (coti) => {
     setCotiEditandoId(coti.id);
     setTipoDocumento(coti.tipoDocumento || 'PROPUESTA');
-    setEstadoDocumento(coti.estado || 'BORRADOR');
+    setEstadoDocumento(estadoDocumentoVisible(coti.estado));
     setNroCoti(coti.numero);
+    setCorrelativoEditadoManual(true);
+    correlativoRequestId.current += 1;
     setTituloCoti(coti.titulo || '');
     setClienteSelect(coti.clienteId);
     setPlantillaSeleccionadaId('');
@@ -1237,7 +1251,7 @@ export default function TamikaERP() {
                 <div className="sm:col-span-2 lg:col-span-4 xl:col-span-3">
                   <label className="text-xs text-slate-500 font-bold uppercase">Correlativo</label>
                   <div className="mt-1 flex gap-2">
-                    <input type="text" value={nroCoti} onChange={(e)=>setNroCoti(e.target.value)} placeholder="Generando..." className="min-w-0 flex-1 border rounded-lg px-3 py-2 text-sm outline-none bg-white text-slate-700 font-mono font-bold focus:border-indigo-500" />
+                    <input type="text" value={nroCoti} onChange={(e)=>{ correlativoRequestId.current += 1; setNroCoti(e.target.value); setCorrelativoEditadoManual(true); }} placeholder="Generando..." className="min-w-0 flex-1 border rounded-lg px-3 py-2 text-sm outline-none bg-white text-slate-700 font-mono font-bold focus:border-indigo-500" />
                     <button type="button" onClick={() => cargarSiguienteCorrelativo(tipoDocumento)} className="rounded-lg border border-slate-300 bg-slate-100 px-3 text-xs font-bold text-slate-700 hover:bg-slate-200">Auto</button>
                   </div>
                 </div>

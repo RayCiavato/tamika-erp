@@ -264,6 +264,7 @@ export default function StarlinkView({ apiFetch = fetch, clientes = [], onChange
 
   const guardarAntena = async () => {
     if (!antenaForm.id) return setMensaje('Selecciona una antena Starlink valida.');
+    if (!antenaForm.numeroSerie.trim()) return setMensaje('El S/N de la antena es obligatorio.');
     setSaving(true);
     setMensaje('');
     try {
@@ -282,15 +283,20 @@ export default function StarlinkView({ apiFetch = fetch, clientes = [], onChange
     }
   };
 
-  const desactivarAntena = async () => {
-    if (!selectedAntena?.id || !confirm(`Desactivar antena ${selectedAntena.nombreAntena}?`)) return;
+  const cambiarEstadoAntena = async () => {
+    if (!selectedAntena?.id) return;
+    const activar = selectedAntena.estado !== 'ACTIVA';
+    if (!confirm(`¿Deseas ${activar ? 'activar' : 'desactivar'} la antena ${selectedAntena.nombreAntena}?`)) return;
     setSaving(true);
     setMensaje('');
     try {
-      const res = await apiFetch(`/api/starlink/antenas/${selectedAntena.id}`, { method: 'DELETE' });
-      await readJson(res, 'No se pudo desactivar la antena Starlink.');
-      setSelectedAntenaId('');
-      setMensaje('Antena Starlink desactivada.');
+      const res = await apiFetch(`/api/starlink/antenas/${selectedAntena.id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: activar ? 'ACTIVA' : 'INACTIVA' }),
+      });
+      await readJson(res, 'No se pudo cambiar el estado de la antena Starlink.');
+      setMensaje(`Antena Starlink ${activar ? 'activada' : 'desactivada'}.`);
       await cargarStarlink();
     } catch (error) {
       setMensaje(error.message);
@@ -299,14 +305,20 @@ export default function StarlinkView({ apiFetch = fetch, clientes = [], onChange
     }
   };
 
-  const desactivarCuenta = async () => {
-    if (!selectedCuenta?.id || !confirm(`Desactivar cuenta ${selectedCuenta.nombreCuenta}?`)) return;
+  const cambiarEstadoCuenta = async () => {
+    if (!selectedCuenta?.id) return;
+    const activar = selectedCuenta.estado !== 'ACTIVA';
+    if (!confirm(`¿Deseas ${activar ? 'activar' : 'desactivar'} la cuenta ${selectedCuenta.nombreCuenta}?`)) return;
     setSaving(true);
     setMensaje('');
     try {
-      const res = await apiFetch(`/api/starlink/cuentas/${selectedCuenta.id}`, { method: 'DELETE' });
-      await readJson(res, 'No se pudo desactivar la cuenta Starlink.');
-      setMensaje('Cuenta Starlink desactivada.');
+      const res = await apiFetch(`/api/starlink/cuentas/${selectedCuenta.id}/estado`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: activar ? 'ACTIVA' : 'INACTIVA' }),
+      });
+      await readJson(res, 'No se pudo cambiar el estado de la cuenta Starlink.');
+      setMensaje(`Cuenta Starlink ${activar ? 'activada' : 'desactivada'}.`);
       await cargarStarlink();
     } catch (error) {
       setMensaje(error.message);
@@ -467,13 +479,14 @@ export default function StarlinkView({ apiFetch = fetch, clientes = [], onChange
 
         <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
           <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full min-w-[860px] text-left text-sm">
+            <table className="w-full min-w-[940px] text-left text-sm">
               <thead className="bg-slate-100 text-xs uppercase text-slate-500">
                 <tr>
                   <th className="p-3">Antena</th>
                   <th className="p-3">Cliente</th>
                   <th className="p-3">Correo/cuenta</th>
                   <th className="p-3">Kit</th>
+                  <th className="p-3">S/N</th>
                   <th className="p-3">Corte</th>
                   <th className="p-3">Estado</th>
                 </tr>
@@ -491,13 +504,14 @@ export default function StarlinkView({ apiFetch = fetch, clientes = [], onChange
                       <p className="text-xs text-slate-500">{antena.cuenta?.nombreCuenta || '-'}</p>
                     </td>
                     <td className="p-3 font-mono text-xs font-bold text-slate-600">{antena.numeroKit || '-'}</td>
+                    <td className="p-3 font-mono text-xs font-bold text-slate-700">{antena.numeroSerie || 'Pendiente'}</td>
                     <td className="p-3">{formatDate(antena.fechaCorte || antena.cuenta?.fechaCorte)}</td>
-                    <td className="p-3"><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">{antena.estado || 'ACTIVA'}</span></td>
+                    <td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${antena.estado === 'ACTIVA' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>{antena.estado || 'ACTIVA'}</span></td>
                   </tr>
                 ))}
                 {!antenasFiltradas.length && (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-slate-500">No hay antenas con esos filtros.</td>
+                    <td colSpan={7} className="p-6 text-center text-slate-500">No hay antenas con esos filtros.</td>
                   </tr>
                 )}
               </tbody>
@@ -508,8 +522,8 @@ export default function StarlinkView({ apiFetch = fetch, clientes = [], onChange
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="text-sm font-extrabold uppercase text-slate-600">Detalle seleccionado</h3>
               {selectedAntena && (
-                <button type="button" onClick={desactivarAntena} disabled={saving} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-60">
-                  Desactivar antena
+                <button type="button" onClick={cambiarEstadoAntena} disabled={saving} className={`rounded-lg border bg-white px-3 py-2 text-xs font-bold disabled:opacity-60 ${selectedAntena.estado === 'ACTIVA' ? 'border-red-200 text-red-700 hover:bg-red-50' : 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'}`}>
+                  {selectedAntena.estado === 'ACTIVA' ? 'Desactivar antena' : 'Activar antena'}
                 </button>
               )}
             </div>
@@ -521,8 +535,8 @@ export default function StarlinkView({ apiFetch = fetch, clientes = [], onChange
                       <h4 className="font-extrabold text-slate-950">Cuenta / correo Starlink</h4>
                       <p className="text-xs text-slate-500">Modificar este bloque actualiza la cuenta asociada.</p>
                     </div>
-                    <button type="button" onClick={desactivarCuenta} disabled={!selectedCuenta?.id || saving} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50">
-                      Desactivar cuenta
+                    <button type="button" onClick={cambiarEstadoCuenta} disabled={!selectedCuenta?.id || saving} className={`rounded-lg border bg-white px-3 py-2 text-xs font-bold disabled:opacity-50 ${selectedCuenta?.estado === 'ACTIVA' ? 'border-red-200 text-red-700 hover:bg-red-50' : 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'}`}>
+                      {selectedCuenta?.estado === 'ACTIVA' ? 'Desactivar cuenta' : 'Activar cuenta'}
                     </button>
                   </div>
                   <div className="grid grid-cols-1 gap-3">
@@ -566,8 +580,8 @@ export default function StarlinkView({ apiFetch = fetch, clientes = [], onChange
                       <EditField label="Numero kit">
                         <input value={antenaForm.numeroKit} onChange={(event) => setAntenaForm((prev) => ({ ...prev, numeroKit: event.target.value }))} className="input" />
                       </EditField>
-                      <EditField label="Numero serie">
-                        <input value={antenaForm.numeroSerie} onChange={(event) => setAntenaForm((prev) => ({ ...prev, numeroSerie: event.target.value }))} className="input" />
+                      <EditField label="S/N (obligatorio)">
+                        <input required value={antenaForm.numeroSerie} onChange={(event) => setAntenaForm((prev) => ({ ...prev, numeroSerie: event.target.value }))} placeholder="Serial único" className="input" />
                       </EditField>
                     </div>
                     <EditField label="Ubicacion">
@@ -622,7 +636,7 @@ export default function StarlinkView({ apiFetch = fetch, clientes = [], onChange
                       </select>
                     </EditField>
                     <EditField label="Tasa BCV">
-                      <input type="number" min="0" step="0.01" value={pagoForm.tasaBcv} onChange={(event) => setPagoForm((prev) => ({ ...prev, tasaBcv: event.target.value }))} className="input" />
+                      <input type="number" min="0" step="0.0001" value={pagoForm.tasaBcv} onChange={(event) => setPagoForm((prev) => ({ ...prev, tasaBcv: event.target.value }))} className="input" />
                     </EditField>
                   </div>
                   <EditField label="Referencia">
